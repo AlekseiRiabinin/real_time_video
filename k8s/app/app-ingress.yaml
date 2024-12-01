@@ -1,0 +1,67 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ingress
+spec:
+  rules:
+  - host: kafka-app.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: kafka
+            port:
+              number: 9092
+  - host: flink-app.com
+    http:
+      paths:              
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: flink-jobmanager
+            port:
+              number: 8082
+  - host: spark-app.com
+    http:
+      paths:              
+      - path: /spark-master
+        pathType: Prefix
+        backend:
+          service:
+            name: spark-master
+            port:
+              number: 8080
+      - path: /spark-worker
+        pathType: Prefix
+        backend:
+          service:
+            name: spark-worker
+            port:
+              number: 8081
+      - path: /spark-driver
+        pathType: Prefix
+        backend:
+          service:
+            name: spark-master
+            port:
+              number: 4040
+  - host: hdfs-app.com
+    http:
+      paths:              
+      - path: /hdfs-namenode
+        pathType: Prefix
+        backend:
+          service:
+            name: hdfs-namenode
+            port:
+              number: 50070
+      - path: /hdfs-datanode
+        pathType: Prefix
+        backend:
+          service:
+            name: hdfs-datanode
+            port:
+              number: 50075

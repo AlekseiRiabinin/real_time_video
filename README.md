@@ -1,8 +1,8 @@
-## Real-Time Video Streaming Service
+# Real-Time Video Streaming Service
 
 ![Alt text](images/real_time_video_hld.jpg)
 
-### 1. Ingestion with Kafka
+## 1. Ingestion with Kafka
 
 1. <u>Data Ingestion</u>: Kafka acts as the entry point for the video data. It ingests the video stream from the camera.
 
@@ -15,7 +15,7 @@
 •  Kafka brokers receive and store the video data in topics, partitioning the data for scalability and fault tolerance.
 
 
-### 2. Real-Time Processing with Flink
+## 2. Real-Time Processing with Flink
 
 1. <u>Stream Processing</u>: Flink consumes the video data from Kafka topics and processes it in real-time. This can include tasks like video frame analysis, filtering, and transformation.
 
@@ -29,7 +29,7 @@
 •  Processed data is then published back to Kafka for further processing.
 
 
-### 3. Intermediate Storage with Kafka
+## 3. Intermediate Storage with Kafka
 
 1. <u>Buffering</u>: Kafka stores the processed video data from Flink, ensuring it is available for further processing by Spark.
 
@@ -40,7 +40,7 @@
 •  Kafka brokers store this data, making it available for Spark to consume.
 
 
-### 4. Machine Learning with Spark
+## 4. Machine Learning with Spark
 
 
 1. <u>Batch Processing</u>: Spark consumes the processed video data from Kafka and performs batch processing tasks.
@@ -54,6 +54,6 @@
 •  The Spark job processes the data, trains machine learning models, and performs advanced analytics.
 
 
-### 5. Long-Term Storage with HDFS
+## 5. Long-Term Storage with HDFS
 
 After processing the data in Spark, the final processed data is written to HDFS for long-term storage.
