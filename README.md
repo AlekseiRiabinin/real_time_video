@@ -11,7 +11,9 @@
 3. *Message Broker*: Kafka serves as a message broker, allowing multiple consumers (like Flink and Spark) to read the video data streams in real-time.
 
 __Process__:
+
 •  The camera streams video data using a tool like FFmpeg, which sends the video stream to a Kafka topic.
+
 •  Kafka brokers receive and store the video data in topics, partitioning the data for scalability and fault tolerance.
 
 
@@ -24,8 +26,11 @@ __Process__:
 3. *Low-Latency Processing*: Flink ensures low-latency processing of the video streams, making it suitable for real-time applications.
 
 __Process__:
+
 •  A Flink job is deployed on the Kubernetes cluster. This job consumes video data from Kafka topics.
+
 •  The Flink job processes each video frame or chunk of data, applying the necessary transformations or analytics.
+
 •  Processed data is then published back to Kafka for further processing.
 
 
@@ -36,7 +41,9 @@ __Process__:
 2. *Message Broker*: Kafka continues to act as a message broker, allowing Spark to consume the processed data.
 
 __Process__:
+
 •  The processed video data from Flink is published to a new Kafka topic.
+
 •  Kafka brokers store this data, making it available for Spark to consume.
 
 
@@ -49,7 +56,9 @@ __Process__:
 3. *Advanced Analytics*: Spark performs advanced analytics on the video data, such as anomaly detection, pattern recognition, and predictive analytics.
 
 __Process__:
+
 •  A Spark job is deployed on the Kubernetes cluster. This job consumes the processed video data from Kafka topics.
+
 •  The Spark job processes the data, trains machine learning models, and performs advanced analytics.
 
 
