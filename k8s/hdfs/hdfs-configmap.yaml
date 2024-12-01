@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hdfs-config
+  namespace: hdfs-namespace
+data:
+  core-site.xml: |
+    <configuration>
+      <property>
+        <name>fs.defaultFS</name>
+        <value>hdfs://namenode:8020</value>
+      </property>
+    </configuration>
+  hdfs-site.xml: |
+    <configuration>
+      <property>
+        <name>dfs.replication</name>
+        <value>1</value>
+      </property>
+      <property>
+        <name>dfs.namenode.name.dir</name>
+        <value>/hadoop/dfs/name</value>
+      </property>
+      <property>
+        <name>dfs.datanode.data.dir</name>
+        <value>/hadoop/dfs/data</value>
+      </property>
+    </configuration>

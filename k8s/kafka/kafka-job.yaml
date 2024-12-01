@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-job
+  namespace: kafka-namespace
+spec:
+  template:
+    metadata:
+      labels:
+        app: kafka-app
+    spec:
+      containers:
+      - name: kafka
+        image: confluentinc/cp-kafka:latest
+        env:
+        - name: KAFKA_BROKER_ID
+          value: "0"
+        - name: KAFKA_LISTENERS
+          value: "PLAINTEXT://:9092"
+        - name: KAFKA_LOG_DIRS
+          value: "/var/lib/kafka/data"
+        - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+          value: "1"
+        - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+          value: "1"
+        - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+          value: "1"      
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+    restartPolicy: Never

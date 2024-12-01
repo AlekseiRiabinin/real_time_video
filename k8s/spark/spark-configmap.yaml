@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spark-config
+  namespace: spark-namespace
+data:
+  spark-defaults.conf: |
+    spark.master spark://spark-master:7077
+    spark.eventLog.enabled true
+    spark.eventLog.dir hdfs://namenode:8020/spark-logs
+    spark.history.fs.logDirectory hdfs://namenode:8020/spark-logs
+  log4j.properties: |
+    log4j.rootCategory=INFO, console
+    log4j.appender.console=org.apache.log4j.ConsoleAppender
+    log4j.appender.console.target=System.err
+    log4j.appender.console.layout=org.apache.log4j.PatternLayout
+  log4j.appender.console.layout.ConversionPattern=%d{yy/MM/dd HH:mm:ss} %p %c{1}: %m%n

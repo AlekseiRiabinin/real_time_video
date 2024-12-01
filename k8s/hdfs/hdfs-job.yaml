@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hdfs-job
+  namespace: hdfs-namespace
+spec:
+  template:
+    metadata:
+      labels:
+        app: hdfs-app
+    spec:
+      containers:
+      - name: hdfs-namenode
+        image: sequenceiq/hadoop-docker:latest
+        env:
+        - name: HDFS_NAMENODE
+          value: "hdfs-namenode"
+        restartPolicy: Never
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+      - name: hdfs-datanode
+        image: sequenceiq/hadoop-docker:latest
+        env:
+        - name: HDFS_NAMENODE
+          value: "hdfs-datanode"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+    restartPolicy: Never

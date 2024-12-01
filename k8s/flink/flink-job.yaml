@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flink-job
+  namespace: flink-namespace
+spec:
+  template:
+    metadata:
+      labels:
+        app: flink-app
+    spec:
+      containers:
+      - name: flink-jobmanager
+        image: flink:latest
+        env:
+        - name: JOB_MANAGER_RPC_ADDRESS
+          value: "flink-jobmanager"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+      - name: flink-taskmanager
+        image: flink:latest
+        env:
+        - name: JOB_MANAGER_RPC_ADDRESS
+          value: "flink-jobmanager"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+    restartPolicy: Never      

@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-config
+  namespace: kafka-namespace
+data:
+  server.properties: |
+    broker.id=1
+    listeners=PLAINTEXT://:9092
+    log.dirs=/var/lib/kafka/data
+    process.roles=broker,controller
+    controller.quorum.voters=1@localhost:9092
+    controller.listener.names=CONTROLLER
+    inter.broker.listener.name=PLAINTEXT
+    num.network.threads=3
+    num.io.threads=8
+    socket.send.buffer.bytes=102400
+    socket.receive.buffer.bytes=102400
+    socket.request.max.bytes=104857600
+    log.retention.hours=168
+    log.segment.bytes=1073741824
+    log.retention.check.interval.ms=300000
+    num.partitions=1
+    num.recovery.threads.per.data.dir=1
+    offsets.topic.replication.factor=1
+    transaction.state.log.replication.factor=1
+    transaction.state.log.min.isr=1
+    log.cleaner.enable=true

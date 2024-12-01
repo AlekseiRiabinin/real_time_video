@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: kafka-namespace
+spec:
+  ports:
+  - protocol: TCP
+    port: 9092
+    targetPort: 9092
+    name: plaintext
+  - protocol: TCP
+    port: 9093
+    targetPort: 9093
+    name: controller
+  selector:
+    app: kafka-app
+  type: ClusterIP

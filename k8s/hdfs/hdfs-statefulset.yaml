@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: hdfs
+  namespace: hdfs-namespace
+  labels:
+    app: hdfs-app
+spec:
+  serviceName: "hdfs-service"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hdfs-app
+  template:
+    metadata:
+      labels:
+        app: hdfs-app
+    spec:
+      containers:
+      - name: hdfs-namenode
+        image: sequenceiq/hadoop-docker:latest
+        ports:
+        - containerPort: 8020
+          name: namenode
+        env:
+        - name: CLUSTER_NAME
+          value: "hadoop"
+        - name: CORE_CONF_fs_defaultFS
+          value: "hdfs://namenode:8020"
+          volumeMounts:
+          - name: hdfs-storage
+            mountPath: /hadoop/dfs/name
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "0.5"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+      - name: hdfs-datanode
+        image: sequenceiq/hadoop-docker:latest
+        ports:
+        - containerPort: 50010
+          name: datanode-data
+        - containerPort: 50020
+          name: datanode-ipc
+        - containerPort: 50075
+          name: datanode-http
+        env:
+        - name: CLUSTER_NAME
+          value: "hadoop"
+        - name: CORE_CONF_fs_defaultFS
+          value: "hdfs://namenode:8020"
+        volumeMounts:
+        - name: hdfs-storage
+          mountPath: /hadoop/dfs/data
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "0.5"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+  volumeClaimTemplates:
+  - metadata:
+      name: hdfs-storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 20Gi

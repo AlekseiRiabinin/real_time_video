@@ -1,0 +1,42 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: spark-network-policy
+  namespace: spark-namespace
+spec:
+  podSelector:
+    matchLabels:
+      app: spark-app
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+      matchLabels:
+        app: spark-app
+    - podSelector:
+      matchLabels:
+        app: kafka-app
+    ports:
+    - protocol: TCP
+      port: 7077
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 9092
+  egress:
+  - to:
+    - podSelector:
+      matchLabels:
+        app: spark-app
+    - podSelector:
+      matchLabels:
+        app: hdfs-app
+    ports:
+    - protocol: TCP
+      port: 7077
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 8020

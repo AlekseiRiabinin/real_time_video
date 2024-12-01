@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink
+  namespace: flink-namespace
+  labels:
+    app: flink-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flink-app
+  template:
+    metadata:
+      labels:
+        app: flink-app
+    spec:
+      containers:
+      - name: flink-jobmanager
+        image: flink:latest
+        args: ["jobmanager"]
+        ports:
+        - containerPort: 8082
+          name: flink-jobmanager
+        env:
+        - name: JOB_MANAGER_RPC_ADDRESS
+          value: "flink-jobmanager"
+        - name: TASK_MANAGER_NUMBER_OF_TASK_SLOTS
+          value: "2"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "0.5"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+      - name: flink-taskmanager
+        image: flink:latest
+        args: ["taskmanager"]
+        ports:
+        - containerPort: 8082
+          name: flink-taskmanager
+        env:
+        - name: JOB_MANAGER_RPC_ADDRESS
+          value: "flink-jobmanager"
+        - name: TASK_MANAGER_NUMBER_OF_TASK_SLOTS
+          value: "2"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "0.5"
+          limits:
+            memory: "2Gi"
+            cpu: "1"

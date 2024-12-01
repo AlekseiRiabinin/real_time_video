@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kafka-network-policy
+  namespace: kafka-namespace
+spec:
+  podSelector:
+    matchLabels:
+      app: kafka-app
+  policyTypes:
+  - Ingress
+  - Egress
+ingress:
+- from:
+  - podSelector:
+    matchLabels:
+      app: flink-app
+  ports:
+  - protocol: TCP
+    port: 8082
+egress:
+- to:
+  - podSelector:
+    matchLabels:
+      app: flink-app
+  - podSelector:
+    matchLabels:
+      app: spark-app      
+  ports:
+  - protocol: TCP
+    port: 8082
+  - protocol: TCP
+    port: 8081

@@ -1,0 +1,48 @@
+real_time_video/
+├── k8s/
+│   ├── kafka/
+│   │   ├── kafka-deployment.yaml
+│   │   ├── kafka-service.yaml
+│   ├── flink/
+│   │   ├── flink-deployment.yaml
+│   │   ├── flink-service.yaml
+│   ├── spark/
+│   │   ├── spark-deployment.yaml
+│   │   ├── spark-service.yaml
+│   ├── hdfs/
+│   │   ├── hdfs-deployment.yaml
+│   │   ├── hdfs-service.yaml
+├── src/
+│   ├── main/
+│   │   ├── scala/
+│   │   │   ├── ingestion/
+│   │   │   │   ├── KafkaService.scala
+│   │   │   │   ├── Dockerfile
+│   │   │   ├── processing/
+│   │   │   │   ├── FlinkJob.scala
+│   │   │   │   ├── Dockerfile
+│   │   │   ├── machinelearning/
+│   │   │   │   ├── SparkMLJob.scala
+│   │   │   │   ├── Dockerfile
+│   │   │   ├── storage/
+│   │   │   │   ├── HDFSClient.scala
+│   │   │   │   ├── Dockerfile
+│   │   │   ├── utils/
+│   │   │   │   ├── Config.scala
+│   │   │   │   ├── Logger.scala
+│   ├── test/
+│   │   ├── scala/
+│   │   │   ├── ingestion/
+│   │   │   │   ├── KafkaServiceTest.scala
+│   │   │   ├── processing/
+│   │   │   │   ├── FlinkJobTest.scala
+│   │   │   ├── machinelearning/
+│   │   │   │   ├── SparkMLJobTest.scala
+│   │   │   ├── storage/
+│   │   │   │   ├── HDFSClientTest.scala
+│   │   │   ├── utils/
+│   │   │   │   ├── ConfigTest.scala
+│   │   │   │   ├── LoggerTest.scala
+├── build.sbt
+├── README.md
+└── .gitignore

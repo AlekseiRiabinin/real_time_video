@@ -1,0 +1,38 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: flink-network-policy
+  namespace: flink-namespace
+spec:
+  podSelector:
+    matchLabels:
+      app: flink-app
+policyTypes:
+- Ingress
+- Egress
+ingress:
+- from:
+  - podSelector:
+    matchLabels:
+      app: kafka-app
+  - podSelector:
+    matchLabels:
+      app: flink-app 
+  ports:
+  - protocol: TCP
+    port: 9092
+  - protocol: TCP
+    port: 8082
+egress:
+- to:
+  - podSelector:
+    matchLabels:
+      app: kafka-app
+  - podSelector:
+    matchLabels:
+      app: flink-app
+  ports:
+  - protocol: TCP
+    port: 9092
+  - protocol: TCP
+    port: 8082

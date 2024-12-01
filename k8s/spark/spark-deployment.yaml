@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-combined
+  namespace: spark-namespace
+  labels:
+    app: spark-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spark-app
+  template:
+    metadata:
+      labels:
+        app: spark-app
+    spec:
+      containers:
+      - name: spark-master
+        image: bitnami/spark:latest
+        command: ["/bin/sh", "-c"]
+        args: ["/opt/spark/sbin/start-master.sh"]
+        ports:
+        - containerPort: 7077
+          name: spark-master
+        - containerPort: 8080
+          name: spark-webui
+        env:
+        - name: SPARK_MODE
+          value: master
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "0.5"
+          limits:
+            memory: "4Gi"
+            cpu: "1"
+      - name: spark-worker
+        image: bitnami/spark:latest
+        command: ["/bin/sh", "-c"]
+        args: ["/opt/spark/sbin/start-worker.sh spark://localhost:7077"]
+        ports:
+        - containerPort: 8081
+          name: spark-worker-webui
+        env:
+        - name: SPARK_MODE
+          value: worker
+        - name: SPARK_MASTER_URL
+          value: spark://localhost:7077
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka:9092"
+        - name: HDFS_NAMENODE
+          value: "hdfs://namenode:8020"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "0.5"
+          limits:
+            memory: "4Gi"
+            cpu: "1"
