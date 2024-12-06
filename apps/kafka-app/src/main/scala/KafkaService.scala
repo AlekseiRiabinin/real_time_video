@@ -13,6 +13,15 @@ import org.apache.kafka.common.serialization.{
   StringDeserializer,
   StringSerializer
 }
+import org.bytedeco.javacv.{
+  CanvasFrame,
+  FrameGrabber,
+  OpenCVFrameGrabber,
+  OpenCVFrameConverter
+}
+import org.bytedeco.opencv.global.opencv_imgcodecs._
+import org.bytedeco.opencv.global.opencv_core._
+import org.bytedeco.opencv.opencv_core.Mat
 
 
 object KafkaService extends App {
@@ -23,8 +32,7 @@ object KafkaService extends App {
   val topic = "video-stream"
 
   // Producer settings
-  val producerSettings = ProducerSettings(system, new ByteArraySerializer, new StringSerializer)
-    .withBootstrapServers(bootstrapServers)
+  val producerSettings = ProducerSettings(system, new ByteArraySerializer, new ByteArraySerializer)
 
   // Consumer settings
   val consumerSettings = ConsumerSettings(system, new ByteArrayDeserializer, new StringDeserializer)
@@ -32,12 +40,30 @@ object KafkaService extends App {
     .withGroupId("video-processing-group")
     .withProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
 
+  // Initialize OpenCV frame grabber
+  val grabber: FrameGrabber = new OpenCVFrameGrabber(0) // 0 for default camera
+  grabber.start()
+
+  // Initialize OpenCV frame converter
+  val converter = new OpenCVFrameConverter.ToMat()
+
   // Producer
-  val producer = Source(1 to 100)
-    .map(_.toString)
-    .map { elem =>
-      new ProducerRecord[Array[Byte], String](topic, elem)
+  val producer = Source
+    .repeat(())
+    .map { _ =>
+      val frame = grabber.grab()
+      if (frame != null) {
+        // Convert frame to Mat
+        val mat = converter.convert(frame)
+        // Encode Mat to byte array
+        val byteArray = new Array[Byte](mat.total().toInt * mat.elemSize().toInt)
+        mat.data().get(byteArray)
+        new ProducerRecord[Array[Byte], Array[Byte]](topic, byteArray)
+      } else {
+        null
+      }
     }
+    .filter(_ != null)
     .runWith(Producer.plainSink(producerSettings))
 
   // Consumer
