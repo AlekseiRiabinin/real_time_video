@@ -28,11 +28,13 @@ object KafkaService extends App {
   implicit val system: ActorSystem = ActorSystem("VideoProcessingSystem")
   implicit val materializer: ActorMaterializer = ActorMaterializer()
 
-  val bootstrapServers = "kafka-broker:9092"
+  // val bootstrapServers = "kafka-broker:9092" -> for cloud deployment (CHECK HOSTNAME!!!!)
+  val bootstrapServers = "192.168.56.1:9092"
   val topic = "video-stream"
 
   // Producer settings
   val producerSettings = ProducerSettings(system, new ByteArraySerializer, new ByteArraySerializer)
+    .withBootstrapServers(bootstrapServers)
 
   // Consumer settings
   val consumerSettings = ConsumerSettings(system, new ByteArrayDeserializer, new StringDeserializer)
@@ -71,9 +73,9 @@ object KafkaService extends App {
     .plainSource(consumerSettings, Subscriptions.topics(topic))
     .mapAsync(1) { msg =>
       Future {
-        println(s"Consumed message: ${msg.value}")
-        // Process the message
-        // ...
+        val byteArray = msg.value()
+        println(s"Consumed message of size: ${byteArray.length} bytes")
+        println(s"Hex dump: ${byteArray.map("%02X".format(_)).mkString(" ")}")
         msg
       }
     }
