@@ -22,11 +22,13 @@ import org.bytedeco.javacv.{
 import org.bytedeco.opencv.global.opencv_imgcodecs._
 import org.bytedeco.opencv.global.opencv_core._
 import org.bytedeco.opencv.opencv_core.Mat
+import org.slf4j.LoggerFactory
 
 
 object KafkaService extends App {
   implicit val system: ActorSystem = ActorSystem("VideoProcessingSystem")
   implicit val materializer: ActorMaterializer = ActorMaterializer()
+  val log = LoggerFactory.getLogger(getClass)
 
   // val bootstrapServers = "kafka-broker:9092" -> for cloud deployment (CHECK HOSTNAME!!!!)
   val bootstrapServers = "192.168.56.1:9092"
@@ -43,8 +45,9 @@ object KafkaService extends App {
     .withProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
 
   // Initialize OpenCV frame grabber
-  val grabber: FrameGrabber = new OpenCVFrameGrabber(0) // 0 for default camera
+  val grabber: FrameGrabber = new OpenCVFrameGrabber(1) // 0 for default camera
   grabber.start()
+  log.info("Frame grabber started")
 
   // Initialize OpenCV frame converter
   val converter = new OpenCVFrameConverter.ToMat()
@@ -55,6 +58,7 @@ object KafkaService extends App {
     .map { _ =>
       val frame = grabber.grab()
       if (frame != null) {
+        log.info("Frame grabbed")
         // Convert frame to Mat
         val mat = converter.convert(frame)
         // Encode Mat to byte array
@@ -62,6 +66,7 @@ object KafkaService extends App {
         mat.data().get(byteArray)
         new ProducerRecord[Array[Byte], Array[Byte]](topic, byteArray)
       } else {
+        log.warn("Frame is null")
         null
       }
     }
@@ -74,10 +79,13 @@ object KafkaService extends App {
     .mapAsync(1) { msg =>
       Future {
         val byteArray = msg.value()
-        println(s"Consumed message of size: ${byteArray.length} bytes")
-        println(s"Hex dump: ${byteArray.map("%02X".format(_)).mkString(" ")}")
+        log.info(s"Consumed message of size: ${byteArray.length} bytes")
+        log.debug(s"Hex dump: ${byteArray.map("%02X".format(_)).mkString(" ")}")
         msg
       }
     }
     .runWith(Sink.ignore)
+  
+  // Log application start
+  log.info("Application started") 
 }
