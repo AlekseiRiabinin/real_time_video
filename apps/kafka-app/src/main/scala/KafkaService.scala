@@ -105,13 +105,6 @@ object KafkaService extends App {
     releaseResources()
   }
 
-  // Add signal handler for SIGINT (Ctrl+C)
-  Signal.handle(new Signal("INT"), new SignalHandler {
-    override def handle(signal: Signal): Unit = {
-      releaseResources()
-    }
-  })
-
   // Producer
   val producer = Source
     .tick(0.seconds, 100.milliseconds, ())
