@@ -5,17 +5,11 @@ lazy val root = (project in file("."))
   .settings(
     name := "KafkaService",
     scalaVersion := "3.3.4",
-    // javaCVVersion := "1.5.11",
-    // javaCppVersion := "1.5.11",
-    // javaCppPlatform := Seq("windows-x86_64", "linux-x86_64"),
-    // javaCppPresetLibs := Seq("opencv" -> "4.10.0", "ffmpeg" -> "7.1"),
     libraryDependencies ++= Seq(
       "com.typesafe.akka" %% "akka-actor" % "2.8.8",
       "com.typesafe.akka" %% "akka-stream" % "2.8.8",
       "com.typesafe.akka" %% "akka-stream-kafka" % "4.0.2",
       "org.apache.kafka" % "kafka-clients" % "3.7.0",
-      // "org.bytedeco" % "opencv-platform" % "4.10.0-1.5.11",
-      // "org.bytedeco" % "ffmpeg-platform" % "7.1-1.5.11",
       "org.bytedeco" % "opencv" % "4.10.0-1.5.11" exclude("org.bytedeco", "javacpp-presets"),
       "org.bytedeco" % "ffmpeg" % "7.1-1.5.11" exclude("org.bytedeco", "javacpp-presets"),
       "ch.qos.logback" % "logback-classic" % "1.2.11"

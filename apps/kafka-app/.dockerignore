@@ -1,0 +1,21 @@
+# Ignore everything in the target directory except the JAR file
+target/*
+!target/scala-3.3.4/KafkaService-assembly-0.1.0-SNAPSHOT.jar
+
+# Ignore the project/target and project/project
+project/target
+project/project
+
+# Ignore VS Code settings
+.vscode
+
+# Ignore Metals directories
+.metals
+.bloop
+.bsp
+
+# Ignore other common files and directories
+.idea
+.DS_Store
+*.log
+*.tmp

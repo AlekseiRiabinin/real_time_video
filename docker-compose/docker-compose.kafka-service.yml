@@ -1,0 +1,16 @@
+services:
+  kafka-service:
+    image: alexflames77/kafka_service:latest
+    depends_on:
+      - kafka-1
+      - kafka-2
+    environment:
+      - BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
+    networks:
+      kafka-net:
+        aliases:
+          - kafka-1
+          - kafka-2
+networks:
+  kafka-net:
+    external: true

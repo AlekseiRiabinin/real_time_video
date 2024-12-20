@@ -34,7 +34,7 @@ object KafkaService extends App {
 
   // val bootstrapServers = "kafka-broker:9092" -> for cloud deployment (CHECK HOSTNAME!!!!)
   // val bootstrapServers = "192.168.56.1:9092"
-  val bootstrapServers = "kafka-app-kafka-1-1:9092,kafka-app-kafka-2-1:9095"
+  val bootstrapServers = "kafka-1:9092,kafka-2:9095"
   val topic = "video-stream"
 
   // Producer settings

@@ -3,7 +3,10 @@ import org.apache.flink.api.common.serialization.SerializationSchema
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.common.typeinfo.Types
 import org.apache.flink.streaming.api.scala._
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer
+import org.apache.flink.api.common.ExecutionMode
+import org.apache.flink.configuration.Configuration
 import java.util.Properties
 
 
@@ -17,8 +20,28 @@ class ByteArraySchema extends DeserializationSchema[Array[Byte]] with Serializat
 
 object FlinkJob {
   def main(args: Array[String]): Unit = {
+    // Create a configuration object
+    val config = new Configuration()
+    // config.setString("taskmanager.numberOfTaskSlots", "1")
+    config.setString("taskmanager.memory.process.size", "1024m")
+    // config.setString("taskmanager.memory.flink.size", "512m")
+    config.setString("taskmanager.memory.framework.heap.size", "128m")
+    // config.setString("taskmanager.memory.framework.off-heap.size", "128m")
+    config.setString("taskmanager.memory.jvm-metaspace.size", "256m")
+    config.setString("taskmanager.memory.jvm-overhead.min", "192m")
+    config.setString("taskmanager.memory.jvm-overhead.max", "1g")
+    // config.setString("taskmanager.memory.jvm-overhead.fraction", "0.1")
+    config.setString("taskmanager.memory.network.min", "64m")
+    config.setString("taskmanager.memory.network.max", "64m")
+    // config.setString("taskmanager.cpu.cores", "2")
+    config.setString("metrics.reporter.slf4j.factory.class", "org.apache.flink.metrics.slf4j.Slf4jReporterFactory")
+    config.setString("metrics.reporter.slf4j.interval", "10 SECONDS")
+    // config.setString("web.log.path", "logs/")
+
     // Set up the execution environment
-    val env = StreamExecutionEnvironment.getExecutionEnvironment
+    val env = StreamExecutionEnvironment.getExecutionEnvironment(config)
+    env.getConfig.setExecutionMode(ExecutionMode.PIPELINED)
+    env.setParallelism(1)
 
     // Set up the Kafka consumer properties
     val properties = new Properties()
