@@ -12,6 +12,10 @@ lazy val root = (project in file("."))
       "org.apache.kafka" % "kafka-clients" % "3.7.0",
       "org.bytedeco" % "opencv" % "4.10.0-1.5.11" exclude("org.bytedeco", "javacpp-presets"),
       "org.bytedeco" % "ffmpeg" % "7.1-1.5.11" exclude("org.bytedeco", "javacpp-presets"),
+      "org.bytedeco" % "javacpp" % "1.5.11",
+      "org.bytedeco" % "javacv-platform" % "1.5.11",
+      // "org.bytedeco" % "javacv-platform" % "1.5.11",
+      // "org.bytedeco" % "opencv-platform" % "4.10.0-1.5.11",
       "ch.qos.logback" % "logback-classic" % "1.2.11"
     ),
     resolvers ++= Seq(
@@ -24,6 +28,7 @@ lazy val root = (project in file("."))
       case PathList("META-INF", xs @ _*) => MergeStrategy.discard
       case PathList("version.conf") => MergeStrategy.concat
       case PathList("org", "opencv", xs @ _*) => MergeStrategy.first
+      case PathList("org", "bytedeco", "javacpp", "windows-x86_64", xs @ _*) => MergeStrategy.first
       case x => MergeStrategy.defaultMergeStrategy(x)
     },
     Compile / run / mainClass := Some("KafkaService")

@@ -5,7 +5,6 @@ import akka.actor.{ActorSystem, CoordinatedShutdown}
 import akka.kafka.{ConsumerSettings, ProducerSettings, Subscriptions}
 import akka.kafka.scaladsl.{Consumer, Producer}
 import akka.stream.scaladsl.{Sink, Source}
-import akka.stream.Materializer
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.serialization.{
@@ -16,20 +15,19 @@ import org.apache.kafka.common.serialization.{
 }
 import org.bytedeco.javacv.{
   CanvasFrame,
-  FrameGrabber,
-  OpenCVFrameGrabber,
-  OpenCVFrameConverter
+  // OpenCVFrameGrabber,
+  // OpenCVFrameConverter
 }
 import org.bytedeco.opencv.global.opencv_imgcodecs._
 import org.bytedeco.opencv.global.opencv_core._
+import org.bytedeco.opencv.opencv_videoio.VideoCapture
+import org.bytedeco.opencv.opencv_core.Mat
 import org.slf4j.LoggerFactory
 import javax.swing.WindowConstants
-import sun.misc.{Signal, SignalHandler}
 
 
 object KafkaService extends App {
   implicit val system: ActorSystem = ActorSystem("VideoProcessingSystem")
-  implicit val materializer: Materializer = Materializer(system)
   val log = LoggerFactory.getLogger(getClass)
 
   // val bootstrapServers = "kafka-broker:9092" -> for cloud deployment (CHECK HOSTNAME!!!!)
@@ -43,8 +41,12 @@ object KafkaService extends App {
     .withProperty("acks", "all") // Ensure all replicas acknowledge
     .withProperty("batch.size", "16384")
     .withProperty("linger.ms", "5")
-    .withProperty("retries", "3")
+    .withProperty("retries", "10")
+    .withProperty("retry.backoff.ms", "1000")
     .withProperty("enable.idempotence", "true") // Ensure idempotent producer
+    .withProperty("connections.max.idle.ms", "10000")
+    .withProperty("request.timeout.ms", "30000")
+    
 
   // Consumer settings
   val consumerSettings = ConsumerSettings(system, new ByteArrayDeserializer, new StringDeserializer)
@@ -53,29 +55,24 @@ object KafkaService extends App {
     .withProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
     .withProperty(ConsumerConfig.FETCH_MIN_BYTES_CONFIG, "50000")
     .withProperty(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, "500")
-    .withProperty(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, "30000")
+    .withProperty(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, "45000")
+    .withProperty(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, "15000")
     .withProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false") // Disable auto commit for better control
 
   // Initialize OpenCV frame grabber
-  val grabber: FrameGrabber = new OpenCVFrameGrabber(0) // 0 for default camera
-  try {
-    // Set frame grabber options
-    grabber.setImageWidth(1280) // Set the width of the captured image
-    grabber.setImageHeight(720) // Set the height of the captured image
-    grabber.setFrameRate(30) // Set the frame rate
-    grabber.setOption("stimeout", "100000000") // 100 seconds
-
-    // Start the frame grabber
-    grabber.start()
-    log.info("Frame grabber started with options: width=1280, height=720, frameRate=30, stimeout=100000000")
-  } catch {
-    case ex: Exception =>
-    log.error("Error starting frame grabber", ex)
-    System.exit(1) // Exit if the grabber fails to start
+  val capture = new VideoCapture(0) // 0 for default camera
+    if (!capture.isOpened) {
+    log.error("Failed to open camera")
+    System.exit(1)
   }
 
-  // Initialize OpenCV frame converter
-  val converter = new OpenCVFrameConverter.ToMat()
+  val mat = new Mat()
+  capture.read(mat)
+  if (mat.empty()) {
+    log.error("Failed to grab a test frame. Camera might not be working.")
+    System.exit(1)
+  }
+  log.info("Test frame grabbed successfully")
 
   // Initialize CanvasFrame
   val canvas = new CanvasFrame("Camera Test")
@@ -85,11 +82,10 @@ object KafkaService extends App {
   def releaseResources(): Unit = {
     log.info("Shutting down...")
     try {
-      grabber.stop()
-      grabber.release()
-      log.info("Frame grabber stopped and released")
+      capture.release()
+      log.info("VideoCapture released")
     } catch {
-      case ex: Exception => log.error("Error stopping frame grabber", ex)
+      case ex: Exception => log.error("Error releasing VideoCapture", ex)
     }
     try {
       canvas.dispose()
@@ -108,18 +104,16 @@ object KafkaService extends App {
   // Producer
   val producer = Source
     .tick(0.seconds, 100.milliseconds, ())
-    .takeWithin(2.minutes) // Adjust the duration here
+    // .takeWithin(2.minutes) // Adjust the duration here
     .mapAsync(1) { _ =>
       Future {
-        val frame = grabber.synchronized {
+        val frame = capture.synchronized {
           log.info("Attempting to grab frame")
-          grabber.grab()
+          capture.read(mat)
+          mat
         }
-        if (frame != null) {
+        if (!mat.empty()) {
           log.info("Frame grabbed")
-          // Convert frame to Mat
-          val mat = converter.convert(frame)
-          // Encode Mat to byte array
           val byteArray = new Array[Byte](mat.total().toInt * mat.elemSize().toInt)
           mat.data().get(byteArray)
           new ProducerRecord[Array[Byte], Array[Byte]](topic, byteArray)
@@ -134,11 +128,6 @@ object KafkaService extends App {
       }        
     }
     .filter(_ != null)
-    .recover {
-      case ex: Exception =>
-      log.error("Error grabbing frame", ex)
-      null
-    }
     .runWith(Producer.plainSink(producerSettings))
 
   // Consumer

@@ -1,7 +1,7 @@
 import org.bytedeco.javacv.{CanvasFrame, OpenCVFrameGrabber}
 
 object CameraTest extends App {
-  val grabber = new OpenCVFrameGrabber(1) // 0 for default camera
+  val grabber = new OpenCVFrameGrabber(0) // 0 for default camera
   grabber.start()
   val canvas = new CanvasFrame("Camera Test")
   while (canvas.isVisible && (grabber.grab()) != null) {
