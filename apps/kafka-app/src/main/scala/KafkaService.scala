@@ -32,7 +32,8 @@ object KafkaService extends App {
 
   // val bootstrapServers = "kafka-broker:9092" -> for cloud deployment (CHECK HOSTNAME!!!!)
   // val bootstrapServers = "192.168.56.1:9092"
-  val bootstrapServers = "kafka-1:9092,kafka-2:9095"
+  // val bootstrapServers = "kafka-1:9092,kafka-2:9095"
+  val bootstrapServers = "172.18.0.2:9092,172.18.0.3:9095"
   val topic = "video-stream"
 
   // Producer settings
@@ -44,8 +45,8 @@ object KafkaService extends App {
     .withProperty("retries", "10")
     .withProperty("retry.backoff.ms", "1000")
     .withProperty("enable.idempotence", "true") // Ensure idempotent producer
-    .withProperty("connections.max.idle.ms", "10000")
-    .withProperty("request.timeout.ms", "30000")
+    .withProperty("connections.max.idle.ms", "30000")
+    .withProperty("request.timeout.ms", "60000")
     
 
   // Consumer settings
