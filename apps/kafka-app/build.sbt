@@ -14,7 +14,7 @@ lazy val root = (project in file("."))
       "org.bytedeco" % "ffmpeg" % "7.1-1.5.11" exclude("org.bytedeco", "javacpp-presets"),
       "org.bytedeco" % "javacpp" % "1.5.11",
       "org.bytedeco" % "javacv-platform" % "1.5.11",
-      // "org.bytedeco" % "opencv-platform" % "4.10.0-1.5.11",
+      "org.bytedeco" % "openblas" % "0.3.23-1.5.9",
       "ch.qos.logback" % "logback-classic" % "1.2.11"
     ),
     resolvers ++= Seq(
