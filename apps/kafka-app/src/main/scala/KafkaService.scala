@@ -4,6 +4,8 @@ import scala.concurrent.duration._
 import akka.actor.{ActorSystem, CoordinatedShutdown}
 import akka.kafka.{ConsumerSettings, ProducerSettings, Subscriptions}
 import akka.kafka.scaladsl.{Consumer, Producer}
+import akka.kafka.ConsumerMessage.{CommittableMessage, CommittableOffsetBatch}
+import akka.stream.{ActorMaterializer, ActorMaterializerSettings}
 import akka.stream.scaladsl.{Sink, Source}
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.producer.ProducerRecord
@@ -19,8 +21,8 @@ import org.bytedeco.javacv.{
   Java2DFrameConverter,
   FFmpegLogCallback
 }
-import org.bytedeco.opencv.global.opencv_imgcodecs._
-import org.bytedeco.opencv.global.opencv_core._
+// import org.bytedeco.opencv.global.opencv_imgcodecs._
+// import org.bytedeco.opencv.global.opencv_core._
 // import org.bytedeco.opencv.opencv_core.Mat
 import org.slf4j.LoggerFactory
 import sun.misc.{Signal, SignalHandler}
@@ -28,6 +30,11 @@ import sun.misc.{Signal, SignalHandler}
 
 object KafkaService extends App {
   implicit val system: ActorSystem = ActorSystem("VideoProcessingSystem")
+  implicit val materializer: ActorMaterializer = ActorMaterializer(
+    ActorMaterializerSettings(system)
+    .withInputBuffer(initialSize = 16, maxSize = 256) // Adjusted buffer sizes
+  )
+
   val log = LoggerFactory.getLogger(getClass)
   
   // Set FFmpeg log callback for detailed logging
@@ -54,30 +61,32 @@ object KafkaService extends App {
   val producerSettings = ProducerSettings(system, new ByteArraySerializer, new ByteArraySerializer)
     .withBootstrapServers(bootstrapServers)
     .withProperty("acks", "all") // Ensure all replicas acknowledge
-    .withProperty("batch.size", "614400") // For lower latency
+    .withProperty("batch.size", "200000") // For lower latency
     .withProperty("linger.ms", "5") // For faster message delivery
     .withProperty("retries", "5") // Avoid excessive retry attempts
     .withProperty("retry.backoff.ms", "500") // For quicker retries
     .withProperty("enable.idempotence", "true") // Ensure idempotent producer
     .withProperty("connections.max.idle.ms", "10000")
     .withProperty("request.timeout.ms", "30000")
-    .withProperty("compression.type", "gzip") // Enable compression
-    .withProperty("socket.connection.setup.timeout.ms", "30000") // Increase this value
-    .withProperty("socket.connection.setup.timeout.max.ms", "60000") // Increase this value
-    // .withProperty("max.request.size", "1048576") // Set to 1 MB
+    .withProperty("compression.type", "snappy") // Enable compression
+    .withProperty("socket.connection.setup.timeout.ms", "30000")
+    .withProperty("socket.connection.setup.timeout.max.ms", "60000")
+    .withProperty("socket.request.max.bytes", "10485760")
+    .withProperty("max.request.size", "2097152") // Set to 2 MB
+    .withProperty("fetch.max.bytes", "2097152")
 
   // Consumer settings
   val consumerSettings = ConsumerSettings(system, new ByteArrayDeserializer, new StringDeserializer)
     .withBootstrapServers(bootstrapServers)
     .withGroupId("video-processing-group")
     .withProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest") // Start consuming new messages
-    .withProperty(ConsumerConfig.FETCH_MIN_BYTES_CONFIG, "50000")
+    .withProperty(ConsumerConfig.FETCH_MIN_BYTES_CONFIG, "100000")
     .withProperty(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, "500") // For quicker fetches
     .withProperty(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, "10000") // For quicker detection of failures    
     .withProperty(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, "3000") // For more frequent heartbeats
     .withProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false") // Disable auto commit for better control
     .withProperty(ConsumerConfig.REQUEST_TIMEOUT_MS_CONFIG, "30000")
-    // .withProperty(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, "32768")
+    .withProperty(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, "1048576")
 
   // Initialize frame grabber
   // val grabber = new OpenCVFrameGrabber(0) // 0 for default camera
@@ -123,14 +132,14 @@ object KafkaService extends App {
     system.terminate()
   }
 
-  // // Shutdown hook using sys.addShutdownHook
-  // sys.addShutdownHook {
-  //   releaseResources()
-  // }
+  // Shutdown hook using sys.addShutdownHook
+  sys.addShutdownHook {
+    releaseResources()
+  }
 
   // Producer
   val producer = Source
-    .tick(0.seconds, 10.seconds, ())
+    .tick(0.seconds, 300.milliseconds, ())
     .mapAsync(1) { _ =>
       Future {
         val frame = grabber.synchronized {
@@ -165,25 +174,33 @@ object KafkaService extends App {
       }        
     }
     .filter(_ != null)
-    .runWith(Producer.plainSink(producerSettings))
+    .runWith(Producer.plainSink(producerSettings))(materializer) // Use materializer
 
   // Consumer
-  val consumer = Consumer
-    .plainSource(consumerSettings, Subscriptions.topics(topic))
-    .mapAsync(1) { msg =>
-      Future {
-        val byteArray = msg.value()
-        log.info(s"Consumed message of size: ${byteArray.length} bytes")
-        log.debug(s"Hex dump: ${byteArray.map("%02X".format(_)).mkString(" ")}")
-        msg
-      }.recover {
-        case ex: Exception =>
-        log.error("Error processing message", ex)
-        msg
-      }
-    }
-    .runWith(Sink.ignore)
+  val numConsumers = 2 // Number of consumer instances
 
+  for (i <- 1 to numConsumers) {
+    val consumer = Consumer
+      .committableSource(consumerSettings, Subscriptions.topics(topic))
+      .mapAsync(1) { (msg: CommittableMessage[Array[Byte], String]) =>
+        Future {
+          val byteArray = msg.record.value()
+          log.info(s"Consumer $i: Consumed message of size: ${byteArray.length} bytes")
+          log.debug(s"Hex dump: ${byteArray.map(b => "%02X".format(b & 0xFF)).mkString(" ")}")
+          msg.committableOffset
+        }.recover {
+          case ex: Exception =>
+          log.error(s"Consumer $i: Error processing message", ex)
+          msg.committableOffset
+        }
+      }
+      .batch(max = 20, first => CommittableOffsetBatch.empty.updated(first)) { (batch, elem) =>
+        batch.updated(elem)
+      }
+      .mapAsync(1)(_.commitScaladsl())
+      .runWith(Sink.ignore)(materializer)
+  }
+  
   // Log application start
   log.info("Application started")
 

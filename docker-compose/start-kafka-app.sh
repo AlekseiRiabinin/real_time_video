@@ -20,8 +20,8 @@ done
 
 # Create Kafka topics
 echo "Creating Kafka topics..."
-docker exec -it kafka-1 kafka-topics.sh --create --topic __consumer_offsets --partitions 3 --replication-factor 2 --bootstrap-server kafka-1:9092
-docker exec -it kafka-1 kafka-topics.sh --create --topic video-stream --partitions 2 --replication-factor 2 --bootstrap-server kafka-1:9092
+docker exec -it kafka-1 kafka-topics.sh --create --topic __consumer_offsets --partitions 20 --replication-factor 2 --bootstrap-server kafka-1:9092,kafka-2:9095
+docker exec -it kafka-1 kafka-topics.sh --create --topic video-stream --partitions 2 --replication-factor 2 --bootstrap-server kafka-1:9092,kafka-2:9095
 
 # Start Kafka-service
 echo "Waiting for Kafka-service to start..."

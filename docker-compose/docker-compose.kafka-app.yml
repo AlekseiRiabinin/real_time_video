@@ -14,11 +14,11 @@ services:
     networks:
       - kafka-net
     restart: always
-    deploy:
-      resources:
-        limits:
-          cpus: "1"
-          memory: "2g"
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "1"
+    #       memory: "2g"
   kafka-2:
     image: bitnami/kafka:3.8.0
     container_name: kafka-2
@@ -34,11 +34,11 @@ services:
     networks:
       - kafka-net
     restart: always
-    deploy:
-      resources:
-        limits:
-          cpus: "1"
-          memory: "2g"
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "1"
+    #       memory: "2g"
   kafka-service:
     image: alexflames77/kafka_service:latest
     container_name: kafka-service
@@ -47,11 +47,11 @@ services:
     networks:
       - kafka-net
     restart: always
-    deploy:
-      resources:
-        limits:
-          cpus: "1"
-          memory: "2g"
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "1"
+    #       memory: "2g"
     depends_on:
       - kafka-1
       - kafka-2
