@@ -15,7 +15,10 @@ lazy val root = (project in file("."))
       "org.bytedeco" % "javacpp" % "1.5.11",
       "org.bytedeco" % "javacv-platform" % "1.5.11",
       "org.bytedeco" % "openblas" % "0.3.23-1.5.9",
-      "ch.qos.logback" % "logback-classic" % "1.2.11"
+      "ch.qos.logback" % "logback-classic" % "1.2.11",
+      "io.prometheus" % "simpleclient" % "0.16.0",
+      "io.prometheus" % "simpleclient_hotspot" % "0.16.0",
+      "io.prometheus" % "simpleclient_httpserver" % "0.16.0"
     ),
     resolvers ++= Seq(
       "Apache Repository" at "https://repository.apache.org/content/repositories/releases/",
@@ -27,7 +30,7 @@ lazy val root = (project in file("."))
       case PathList("META-INF", xs @ _*) => MergeStrategy.discard
       case PathList("version.conf") => MergeStrategy.concat
       case PathList("org", "opencv", xs @ _*) => MergeStrategy.first
-      case PathList("org", "bytedeco", "javacpp", "windows-x86_64", xs @ _*) => MergeStrategy.first
+      case PathList("org", "bytedeco", "javacpp", "linux-x86_64", xs @ _*) => MergeStrategy.first
       case x => MergeStrategy.defaultMergeStrategy(x)
     },
     Compile / run / mainClass := Some("KafkaService")

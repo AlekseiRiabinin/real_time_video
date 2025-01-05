@@ -15,19 +15,16 @@ import org.apache.kafka.common.serialization.{
   StringDeserializer,
   StringSerializer
 }
-// import org.bytedeco.javacv.{OpenCVFrameGrabber, OpenCVFrameConverter}
 import org.bytedeco.javacv.{
   FFmpegFrameGrabber,
   Java2DFrameConverter,
   FFmpegLogCallback
 }
-// import org.bytedeco.opencv.global.opencv_imgcodecs._
-// import org.bytedeco.opencv.global.opencv_core._
-// import org.bytedeco.opencv.opencv_core.Mat
 import org.slf4j.LoggerFactory
 import sun.misc.{Signal, SignalHandler}
-
-
+import io.prometheus.client.exporter.HTTPServer
+import io.prometheus.client.hotspot.DefaultExports
+import io.prometheus.client.{CollectorRegistry, Counter, Gauge, Histogram}
 object KafkaService extends App {
   implicit val system: ActorSystem = ActorSystem("VideoProcessingSystem")
   implicit val materializer: ActorMaterializer = ActorMaterializer(
@@ -56,6 +53,25 @@ object KafkaService extends App {
   // val bootstrapServers = "172.18.0.2:9092,172.18.0.3:9095"
   // val bootstrapServers = "localhost:9092,localhost:9095" // when this app is running on host
   val topic = "video-stream"
+
+  // Prometheus metrics
+  val registry = new CollectorRegistry()
+  val frameProcessingTime = Histogram.build()
+    .name("frame_processing_time_seconds")
+    .help("Time taken to process each frame")
+    .register(registry)
+  val framesProcessed = Counter.build()
+    .name("frames_processed_total")
+    .help("Total number of frames processed")
+    .register(registry)
+  val frameSize = Gauge.build()
+    .name("frame_size_bytes")
+    .help("Size of each frame in bytes")
+    .register(registry)
+
+  // Start Prometheus HTTP server
+  DefaultExports.initialize()
+  new HTTPServer(9091)
 
   // Producer settings
   val producerSettings = ProducerSettings(system, new ByteArraySerializer, new ByteArraySerializer)
@@ -110,9 +126,7 @@ object KafkaService extends App {
       System.exit(1) // Exit if the grabber fails to start
   }  
 
-  // val converter = new OpenCVFrameConverter.ToMat()
   val converter = new Java2DFrameConverter()
-  // val mat = new Mat()
   if (grabber.grab() != null) {
     log.info("Test frame grabbed successfully")
   } else {
@@ -142,18 +156,15 @@ object KafkaService extends App {
     .tick(0.seconds, 300.milliseconds, ())
     .mapAsync(1) { _ =>
       Future {
+        val startTime = System.currentTimeMillis()
         val frame = grabber.synchronized {
           log.info("Attempting to grab frame")
           grabber.grab()
         }
-        // if (frame != null) {
-        //   log.info("Frame grabbed")
-        //   val mat = converter.convert(frame)
-        //   log.info("Frame converted to matrix")
-        //   val byteArray = new Array[Byte](mat.total().toInt * mat.elemSize().toInt)
-        //   mat.data().get(byteArray)
-        //   log.info("Copy pixel data into byte array")
-        //   new ProducerRecord[Array[Byte], Array[Byte]](topic, byteArray)      
+        val endTime = System.currentTimeMillis()
+        val processingTime = endTime - startTime
+        frameProcessingTime.observe(processingTime / 1000.0)
+        log.info(s"Frame processing time: $processingTime ms")
         if (frame != null) {
           log.info("Frame grabbed")
           val bufferedImage = converter.convert(frame)
@@ -161,12 +172,14 @@ object KafkaService extends App {
           val byteArray = new Array[Byte](bufferedImage.getWidth * bufferedImage.getHeight * 3)
           val raster = bufferedImage.getRaster
           raster.getDataElements(0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray)
+          frameSize.set(byteArray.length)
+          framesProcessed.inc()
           log.info("Copy pixel data into byte array")
           new ProducerRecord[Array[Byte], Array[Byte]](topic, byteArray)
         } else {  
-          log.warn("Frame is null")
-          null
-        }
+          log.info("End of video file reached")
+          releaseResources()
+          null        }
       }.recover {
         case ex: Exception =>
         log.error("Error grabbing frame", ex)

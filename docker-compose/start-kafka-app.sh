@@ -27,4 +27,12 @@ docker exec -it kafka-1 kafka-topics.sh --create --topic video-stream --partitio
 echo "Waiting for Kafka-service to start..."
 docker compose -f docker-compose.kafka-app.yml up -d kafka-service
 
-echo "Kafka-app started."
+# Wait for Kafka service to be ready
+echo "Waiting for Kafka service to start..."
+sleep 10
+
+# Start Prometheus and Grafana
+echo "Starting Prometheus and Grafana..."
+docker compose -f docker-compose.kafka-app.yml up -d prometheus grafana
+
+echo "Kafka app, Prometheus, and Grafana started."
