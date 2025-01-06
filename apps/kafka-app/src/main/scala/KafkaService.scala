@@ -71,8 +71,9 @@ object KafkaService extends App {
 
   // Start Prometheus HTTP server
   DefaultExports.initialize()
-  new HTTPServer(9091)
-
+  val server = new HTTPServer(9091)
+  log.info("Prometheus HTTP server started on port 9091")
+  
   // Producer settings
   val producerSettings = ProducerSettings(system, new ByteArraySerializer, new ByteArraySerializer)
     .withBootstrapServers(bootstrapServers)

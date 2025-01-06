@@ -46,6 +46,8 @@ services:
       - BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
     networks:
       - kafka-net
+    ports:
+      - "9091:9091"
     restart: always
     # deploy:
     #   resources:
@@ -60,6 +62,7 @@ services:
     container_name: prometheus
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      -  prometheus-data:/prometheus
     ports:
       - "9090:9090"
     networks:
@@ -77,6 +80,8 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-storage:/var/lib/grafana
     networks:
       - kafka-net
     restart: always
@@ -88,3 +93,6 @@ services:
 networks:
   kafka-net:
     driver: bridge
+volumes:
+  grafana-storage:
+  prometheus-data:
