@@ -25,6 +25,7 @@ import sun.misc.{Signal, SignalHandler}
 import io.prometheus.client.exporter.HTTPServer
 import io.prometheus.client.hotspot.DefaultExports
 import io.prometheus.client.{CollectorRegistry, Counter, Gauge, Histogram}
+
 object KafkaService extends App {
   implicit val system: ActorSystem = ActorSystem("VideoProcessingSystem")
   implicit val materializer: ActorMaterializer = ActorMaterializer(
@@ -55,19 +56,19 @@ object KafkaService extends App {
   val topic = "video-stream"
 
   // Prometheus metrics
-  val registry = new CollectorRegistry()
+  // val registry = new CollectorRegistry()
   val frameProcessingTime = Histogram.build()
     .name("frame_processing_time_seconds")
     .help("Time taken to process each frame")
-    .register(registry)
+    .register()
   val framesProcessed = Counter.build()
     .name("frames_processed_total")
     .help("Total number of frames processed")
-    .register(registry)
+    .register()
   val frameSize = Gauge.build()
     .name("frame_size_bytes")
     .help("Size of each frame in bytes")
-    .register(registry)
+    .register()
 
   // Start Prometheus HTTP server
   DefaultExports.initialize()
@@ -150,6 +151,8 @@ object KafkaService extends App {
   // Shutdown hook using sys.addShutdownHook
   sys.addShutdownHook {
     releaseResources()
+    server.stop()
+    log.info("Prometheus HTTP server stopped")
   }
 
   // Producer
@@ -164,7 +167,7 @@ object KafkaService extends App {
         }
         val endTime = System.currentTimeMillis()
         val processingTime = endTime - startTime
-        frameProcessingTime.observe(processingTime / 1000.0)
+        frameProcessingTime.observe(processingTime / 1000.0) // Update histogram
         log.info(s"Frame processing time: $processingTime ms")
         if (frame != null) {
           log.info("Frame grabbed")
@@ -173,14 +176,15 @@ object KafkaService extends App {
           val byteArray = new Array[Byte](bufferedImage.getWidth * bufferedImage.getHeight * 3)
           val raster = bufferedImage.getRaster
           raster.getDataElements(0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray)
-          frameSize.set(byteArray.length)
-          framesProcessed.inc()
+          frameSize.set(byteArray.length) // Update gauge
+          framesProcessed.inc() // Increment counter
           log.info("Copy pixel data into byte array")
           new ProducerRecord[Array[Byte], Array[Byte]](topic, byteArray)
         } else {  
           log.info("End of video file reached")
           releaseResources()
-          null        }
+          null
+        }
       }.recover {
         case ex: Exception =>
         log.error("Error grabbing frame", ex)
