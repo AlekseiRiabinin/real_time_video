@@ -45,7 +45,7 @@ object FlinkJob {
 
     // Set up the Kafka consumer properties
     val properties = new Properties()
-    properties.setProperty("bootstrap.servers", "kafka-app-kafka-1-1:9092,kafka-app-kafka-2-1:9095")
+    properties.setProperty("bootstrap.servers", "kafka-1:9092,kafka-2:9095")
     properties.setProperty("group.id", "video-processing-group")
 
     // Create the Kafka consumer

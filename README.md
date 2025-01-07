@@ -2,6 +2,11 @@
 
 ![Alt text](images/real_time_video_hld.jpg)
 
+### Reference to the Netflix data infrastructure:
+[Migrating Batch ETL to Stream Processing: A Netflix Case Study with Kafka and Flink](https://www.infoq.com/articles/netflix-migrating-stream-processing/) 
+
+![Alt text](images/netflix_data_infrastructure.jpg)
+
 ## 1. Ingestion with Kafka
 
 1. *Data Ingestion*: Kafka acts as the entry point for the video data. It ingests the video stream from the camera.
