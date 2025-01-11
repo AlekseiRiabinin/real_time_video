@@ -57,6 +57,23 @@ services:
     depends_on:
       - kafka-1
       - kafka-2
+  # spark-job:
+  #   image: alexflames77/spark_job:latest
+  #   environment:
+  #     - SPARK_MASTER_URL=spark://spark-master:7077
+  #     - SPARK_APPLICATION_JAR_LOCATION=/opt/spark-apps/spark-ml-job.jar
+  #     - SPARK_APPLICATION_MAIN_CLASS=SparkMLJob
+  #   networks:
+  #     - kafka-net
+  #   restart: always
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: "1"
+  #         memory: "2g"
+  #   depends_on:
+  #     - kafka-1
+  #     - kafka-2
   prometheus:
     image: prom/prometheus
     container_name: prometheus
