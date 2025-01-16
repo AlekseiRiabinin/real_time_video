@@ -20,11 +20,14 @@ lazy val root = (project in file("."))
     ),
     resolvers ++= Seq(
       "Apache Repository" at "https://repository.apache.org/content/repositories/releases/",
-      "Maven Central" at "https://repo1.maven.org/maven2/"
+      "Maven Central" at "https://repo1.maven.org/maven2/",
+      "Bytedeco" at "https://repo.bytedeco.org/releases/"
     ),
     assembly / assemblyMergeStrategy := {
       case PathList("META-INF", xs @ _*) => MergeStrategy.discard
       case PathList("version.conf") => MergeStrategy.concat
+      case PathList("org", "opencv", xs @ _*) => MergeStrategy.first
+      case PathList("org", "bytedeco", "javacpp", "linux-x86_64", xs @ _*) => MergeStrategy.first
       case x => MergeStrategy.defaultMergeStrategy(x)
     },
     Compile / run / mainClass := Some("FlinkJob"),
