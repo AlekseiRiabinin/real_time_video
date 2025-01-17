@@ -1,3 +1,4 @@
+jobmanager.memory.process.size: 1024m
 jobmanager.rpc.address: jobmanager
 jobmanager.rpc.port: 6123
 rest.address: jobmanager
@@ -9,11 +10,11 @@ taskmanager.memory.jvm-overhead.min: 192m
 taskmanager.memory.jvm-overhead.max: 1g
 taskmanager.memory.network.min: 64m
 taskmanager.memory.network.max: 64m
-taskmanager.numberOfTaskSlots: 2
+taskmanager.numberOfTaskSlots: 1
+taskmanager.cpu.cores: 1
 metrics.reporter.slf4j.factory.class: org.apache.flink.metrics.slf4j.Slf4jReporterFactory
 metrics.reporter.slf4j.interval: 10 SECONDS
 env.java.opts: -XX:+IgnoreUnrecognizedVMOptions --illegal-access=permit
-# config.setString("taskmanager.numberOfTaskSlots", "1")
 # config.setString("taskmanager.memory.flink.size", "512m")
 # config.setString("taskmanager.memory.framework.off-heap.size", "128m")
 # config.setString("taskmanager.memory.jvm-overhead.fraction", "0.1")

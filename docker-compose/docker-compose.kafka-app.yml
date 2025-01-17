@@ -60,24 +60,20 @@ services:
   jobmanager:
     image: flink:1.17.1
     container_name: jobmanager
+    hostname: jobmanager
     ports:
       - "8081:8081"
+      - "6123:6123"
+      - "6124:6124"
     command: jobmanager
-    environment:
-      - |
-        FLINK_PROPERTIES=
-        jobmanager.rpc.address: jobmanager
     networks:
       - kafka-net
     restart: always
   taskmanager:
     image: flink:1.17.1
     container_name: taskmanager
+    hostname: taskmanager
     command: taskmanager
-    environment:
-      - |
-        FLINK_PROPERTIES=
-        jobmanager.rpc.address: jobmanager
     networks:
       - kafka-net
     restart: always
@@ -88,7 +84,8 @@ services:
     container_name: flink-job
     environment:
       - FLINK_JOBMANAGER_HOST=jobmanager
-      - FLINK_JOBMANAGER_PORT=8081    
+      - FLINK_JOBMANAGER_PORT=8081
+      - JAVA_OPTS="--add-opens=java.base/java.util=ALL-UNNAMED --illegal-access=permit"
     networks:
       - kafka-net
     depends_on:

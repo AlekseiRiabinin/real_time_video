@@ -21,11 +21,10 @@ class ByteArraySchema extends DeserializationSchema[Array[Byte]] with Serializat
 
 object FlinkJob {
   def main(args: Array[String]): Unit = {
-
     // Set up the execution environment
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     env.getConfig.setExecutionMode(ExecutionMode.PIPELINED)
-    env.setParallelism(2)
+    env.setParallelism(1)
 
     // Set up the Kafka consumer properties
     val properties = new Properties()
@@ -74,6 +73,13 @@ object FlinkJob {
 
     //   processedBytes
     // }
+
+    // val kafkaProducer = new FlinkKafkaProducer[Array[Byte]](
+    //   "output-topic",
+    //   new ByteArraySchema(),
+    //   properties,
+    //   FlinkKafkaProducer.Semantic.EXACTLY_ONCE
+    // )
 
     // // Add the Kafka producer as a sink to the Flink job
     // processedStream.addSink(kafkaProducer)
