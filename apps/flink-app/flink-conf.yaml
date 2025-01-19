@@ -14,7 +14,7 @@ taskmanager.memory.jvm-overhead.max: 1g
 taskmanager.memory.network.min: 64m
 taskmanager.memory.network.max: 128m
 taskmanager.numberOfTaskSlots: 2
-taskmanager.cpu.cores: 1
+taskmanager.cpu.cores: 2
 taskmanager.host: taskmanager
 taskmanager.rpc.port: 6123
 

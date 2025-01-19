@@ -67,14 +67,16 @@ docker compose -f docker-compose.kafka-app.yml up -d flink-job
 
 # Wait for Flink job to start
 echo "Waiting for Flink job to start..."
-sleep 10
+sleep 60
 
 # Check if Flink job is running
+echo "Checking if Flink job is running..."
 if docker exec jobmanager flink list | grep -q "FlinkJob Kafka Consumer"; then
     echo "Flink job 'FlinkJob Kafka Consumer' is running."
 else
     echo "Error: Flink job 'FlinkJob Kafka Consumer' is not running. Check the logs for more information."
     docker compose -f docker-compose.kafka-app.yml logs flink-job
+    exit 1
 fi
 
 echo "Kafka-app, Flink-job, Prometheus, and Grafana started."

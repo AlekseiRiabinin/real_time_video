@@ -4,8 +4,10 @@ import org.apache.flink.streaming.api.scala._
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.streaming.connectors.kafka.{FlinkKafkaConsumer, FlinkKafkaProducer}
 import org.apache.flink.api.common.ExecutionMode
-import org.apache.flink.configuration.Configuration
+import org.apache.flink.configuration.{Configuration, RestOptions, RestartStrategyOptions}
 import java.util.Properties
+import java.time.Duration
+import java.io.FileInputStream
 import org.bytedeco.javacv.{Java2DFrameConverter, OpenCVFrameConverter}
 import org.bytedeco.opencv.global.opencv_core._
 import org.bytedeco.opencv.global.opencv_imgproc._
@@ -22,14 +24,18 @@ class ByteArraySchema extends DeserializationSchema[Array[Byte]] with Serializat
 object FlinkJob {
   def main(args: Array[String]): Unit = {
     // Set up the execution environment
-    val env = StreamExecutionEnvironment.getExecutionEnvironment
+    val config = new Configuration()
+    config.setString(RestartStrategyOptions.RESTART_STRATEGY, "fixed-delay")
+    config.setInteger(RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_ATTEMPTS, 3)
+    config.set(RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(10))
+    
+    val env = StreamExecutionEnvironment.getExecutionEnvironment(config)
     env.getConfig.setExecutionMode(ExecutionMode.PIPELINED)
     env.setParallelism(2)
 
-    // Set up the Kafka consumer properties
+    // Load Kafka consumer properties
     val properties = new Properties()
-    properties.setProperty("bootstrap.servers", "kafka-1:9092,kafka-2:9095")
-    properties.setProperty("group.id", "video-processing-group")
+    properties.load(new FileInputStream("/app/config/consumer.properties"))
 
     // Create the Kafka consumer
     val kafkaConsumer = new FlinkKafkaConsumer[Array[Byte]](
