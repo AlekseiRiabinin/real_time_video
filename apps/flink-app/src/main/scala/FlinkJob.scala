@@ -24,7 +24,7 @@ object FlinkJob {
     // Set up the execution environment
     val env = StreamExecutionEnvironment.getExecutionEnvironment
     env.getConfig.setExecutionMode(ExecutionMode.PIPELINED)
-    env.setParallelism(1)
+    env.setParallelism(2)
 
     // Set up the Kafka consumer properties
     val properties = new Properties()

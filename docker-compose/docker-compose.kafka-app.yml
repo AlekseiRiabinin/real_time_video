@@ -66,6 +66,11 @@ services:
       - "6123:6123"
       - "6124:6124"
     command: jobmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.registration.timeout: 5 min
     networks:
       - kafka-net
     restart: always
@@ -74,6 +79,11 @@ services:
     container_name: taskmanager
     hostname: taskmanager
     command: taskmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.registration.timeout: 5 min
     networks:
       - kafka-net
     restart: always
@@ -85,7 +95,18 @@ services:
     environment:
       - FLINK_JOBMANAGER_HOST=jobmanager
       - FLINK_JOBMANAGER_PORT=8081
-      - JAVA_OPTS="--add-opens=java.base/java.util=ALL-UNNAMED --illegal-access=permit"
+    command: >
+      /bin/bash -c "
+      java 
+      --add-opens=java.base/java.util=ALL-UNNAMED 
+      --add-opens=java.base/java.lang=ALL-UNNAMED 
+      --add-opens=java.base/java.lang.invoke=ALL-UNNAMED 
+      --add-opens=java.base/java.nio=ALL-UNNAMED 
+      --add-opens=java.base/sun.nio.ch=ALL-UNNAMED 
+      -cp /opt/flink/lib/* 
+      org.apache.flink.client.cli.CliFrontend run 
+      -c your.main.Class /path/to/your/job.jar
+      "
     networks:
       - kafka-net
     depends_on:
