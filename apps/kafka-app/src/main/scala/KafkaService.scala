@@ -115,9 +115,9 @@ object KafkaService extends App {
 
   try {
     // Set frame grabber options
-    grabber.setImageWidth(640) // Set the width of the captured image
-    grabber.setImageHeight(480) // Set the height of the captured image
-    grabber.setFrameRate(30) // Set the frame rate
+    grabber.setImageWidth(256) // Set the width of the captured image
+    grabber.setImageHeight(256) // Set the height of the captured image
+    grabber.setFrameRate(1) // Set the frame rate
 
     // Start the frame grabber
     grabber.start()
