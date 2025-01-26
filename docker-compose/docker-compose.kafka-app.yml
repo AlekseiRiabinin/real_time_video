@@ -135,6 +135,59 @@ services:
   #   depends_on:
   #     - kafka-1
   #     - kafka-2
+  spark-job:
+    image: alexflames77/spark_job:latest
+    container_name: spark-job
+    environment:
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    volumes:
+      - ./models/saved_model:/opt/spark-apps/models/saved_model
+    depends_on:
+      - spark-master
+    networks:
+      - kafka-net
+    restart: always
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "1"
+    #       memory: "2g"
+  spark-master:
+    image: bitnami/spark:3.5.4
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    ports:
+      - "7077:7077"
+      - "8080:8080"
+    networks:
+      - kafka-net
+    restart: always
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "1"
+    #       memory: "2g"
+  spark-worker:
+    image: bitnami/spark:3.5.4
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=1
+    depends_on:
+      - spark-master
+    networks:
+      - kafka-net
+    restart: always
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "1"
+    #       memory: "2g"
   prometheus:
     image: prom/prometheus
     container_name: prometheus

@@ -1,4 +1,4 @@
-package com.sparkmljob.transformers
+package com.transformers
 
 import org.apache.spark.ml.Transformer
 import org.apache.spark.ml.param.{Param, ParamMap}

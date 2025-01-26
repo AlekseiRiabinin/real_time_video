@@ -1,4 +1,4 @@
-package com.sparkmljob.main.com.sparkmljob.main
+package com.sparkml
 
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.{col, udf}

@@ -1,9 +1,9 @@
-package com.sparkmljob.main.com.sparkmljob.main
+package com.sparkml
 
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
 import org.apache.spark.ml.PipelineModel
-import com.sparkmljob.transformers.CustomImageTransformer
+import com.transformers.CustomImageTransformer
 
 
 object SparkMLJob {
