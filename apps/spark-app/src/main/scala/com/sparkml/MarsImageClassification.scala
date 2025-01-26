@@ -19,7 +19,7 @@ object MarsImageClassification {
     import spark.implicits._
 
     // Load the dataset
-    val data = spark.read.format("csv").option("header", "true").load("path/to/mars_images.csv")
+    val data = spark.read.format("csv").option("header", "true").load("mars_images.csv")
 
     // Define the UDF to process images
     val processImage = udf((path: String) => {
