@@ -103,9 +103,9 @@ services:
       --add-opens=java.base/java.lang.invoke=ALL-UNNAMED 
       --add-opens=java.base/java.nio=ALL-UNNAMED 
       --add-opens=java.base/sun.nio.ch=ALL-UNNAMED 
-      -cp /opt/flink/lib/* 
-      org.apache.flink.client.cli.CliFrontend run 
-      -c your.main.Class /path/to/your/job.jar
+      # -cp /opt/flink/lib/* 
+      # org.apache.flink.client.cli.CliFrontend run 
+      # -c FlinkJob /app/FlinkJob-assembly-0.1.0-SNAPSHOT.jar
       "
     networks:
       - kafka-net
@@ -156,6 +156,7 @@ services:
     image: bitnami/spark:3.5.4
     environment:
       - SPARK_MODE=master
+      - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
       - SPARK_RPC_ENCRYPTION_ENABLED=no
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no

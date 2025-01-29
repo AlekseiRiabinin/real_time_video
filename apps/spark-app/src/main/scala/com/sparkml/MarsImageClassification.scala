@@ -14,18 +14,28 @@ import org.apache.spark.ml.classification.{
 import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.ml.tuning.{CrossValidator, ParamGridBuilder}
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
+import com.typesafe.config.ConfigFactory
 
 
 object MarsImageClassification {
   def main(args: Array[String]): Unit = {
+    // Load configuration
+    val config = ConfigFactory.load("application.conf")
+    val appName = config.getString("spark.appName")
+    val master = config.getString("spark.master")
+    val csvPath = config.getString("spark.csvPath")
+    val modelSavePath = config.getString("spark.modelSavePath")
+
+    // Initialize SparkSession
     val spark = SparkSession.builder
-      .appName("MarsImageClassification")
+      .appName(appName)
+      .master(master)
       .getOrCreate()
 
     import spark.implicits._
 
     // Load the dataset
-    val data = spark.read.format("csv").option("header", "true").load("mars_images.csv")
+    val data = spark.read.format("csv").option("header", "true").load(csvPath)
 
     // Define the UDF to process images
     val processImage = udf((path: String) => {
@@ -137,7 +147,7 @@ object MarsImageClassification {
     }
 
     // Save the best model
-    bestModel.asInstanceOf[PipelineModel].write.overwrite().save("models/bestModel")
+    bestModel.asInstanceOf[PipelineModel].write.overwrite().save(modelSavePath)
 
     spark.stop()
   }
