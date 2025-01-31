@@ -189,6 +189,41 @@ services:
     #     limits:
     #       cpus: "1"
     #       memory: "2g"
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    environment:
+      - CLUSTER_NAME=hdfs-cluster
+    volumes:
+      - namenode-data:/hadoop/dfs/name
+    ports:
+      - "50070:50070"  # NameNode web UI
+      - "8020:8020"    # HDFS port
+    networks:
+      - kafka-net
+    restart: always
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "1"
+    #       memory: "2g"
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+    volumes:
+      - datanode-data:/hadoop/dfs/data
+    depends_on:
+      - namenode
+    networks:
+      - kafka-net
+    restart: always
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "1"
+    #       memory: "2g"
   prometheus:
     image: prom/prometheus
     container_name: prometheus
@@ -226,5 +261,7 @@ networks:
   kafka-net:
     driver: bridge
 volumes:
+  namenode-data:
+  datanode-data:
   grafana-storage:
   prometheus-data:

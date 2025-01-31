@@ -15,6 +15,9 @@ import org.apache.kafka.common.serialization.{
   StringDeserializer,
   StringSerializer
 }
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.{FileSystem, Path}
+import java.net.URI
 import org.bytedeco.javacv.{
   FFmpegFrameGrabber,
   Java2DFrameConverter,
@@ -25,6 +28,7 @@ import sun.misc.{Signal, SignalHandler}
 import io.prometheus.client.exporter.HTTPServer
 import io.prometheus.client.hotspot.DefaultExports
 import io.prometheus.client.{CollectorRegistry, Counter, Gauge, Histogram}
+
 
 object KafkaService extends App {
   implicit val system: ActorSystem = ActorSystem("VideoProcessingSystem")
@@ -49,14 +53,20 @@ object KafkaService extends App {
     }
   })
 
-  // val bootstrapServers = "kafka-broker:9092" -> for cloud deployment (CHECK HOSTNAME!!!!)
+  // Kafka-broker configuration
   val bootstrapServers = "kafka-1:9092,kafka-2:9095"
-  // val bootstrapServers = "172.18.0.2:9092,172.18.0.3:9095"
-  // val bootstrapServers = "localhost:9092,localhost:9095" // when this app is running on host
   val topic = "video-stream"
 
+  // HDFS configuration
+  val hdfsURI = "hdfs://namenode:8020"
+  val conf = new Configuration()
+  conf.set("fs.defaultFS", hdfsURI)
+  val fs = FileSystem.get(new URI(hdfsURI), conf)
+
+  // Path to the video file in HDFS
+  val hdfsVideoPath = "/videos/video.mp4"
+
   // Prometheus metrics
-  // val registry = new CollectorRegistry()
   val frameProcessingTime = Histogram.build()
     .name("frame_processing_time_seconds")
     .help("Time taken to process each frame")
@@ -106,12 +116,23 @@ object KafkaService extends App {
     .withProperty(ConsumerConfig.REQUEST_TIMEOUT_MS_CONFIG, "30000")
     .withProperty(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, "1048576")
 
-  // Initialize frame grabber
-  // val grabber = new OpenCVFrameGrabber(0) // 0 for default camera
-  // val grabber = new FFmpegFrameGrabber("/dev/video0")
-  // grabber.setFormat("video4linux2") // Set the appropriate format
-  val videoFilePath = "./video.mp4"
-  val grabber = new FFmpegFrameGrabber(videoFilePath)
+  // // Initialize frame grabber
+  // val videoFilePath = "./video.mp4"
+  // val grabber = new FFmpegFrameGrabber(videoFilePath)
+
+  // Download video from HDFS to a local temporary file
+  val localVideoPath = "/tmp/video.mp4"
+  try {
+    fs.copyToLocalFile(new Path(hdfsVideoPath), new Path(localVideoPath))
+    log.info(s"Video file downloaded from HDFS to $localVideoPath")
+  } catch {
+    case ex: Exception =>
+      log.error(s"Error downloading video from HDFS: ${ex.getMessage}")
+      System.exit(1)
+  }
+
+  // Initialize frame grabber for the local video file
+  val grabber = new FFmpegFrameGrabber(localVideoPath)
 
   try {
     // Set frame grabber options
@@ -121,7 +142,7 @@ object KafkaService extends App {
 
     // Start the frame grabber
     grabber.start()
-    log.info("Frame grabber started with options: width=640, height=480, frameRate=30")
+    log.info("Frame grabber started with options: width=256, height=256, frameRate=1")
   } catch {
     case ex: Exception =>
       log.error("Error starting frame grabber", ex)
@@ -144,6 +165,12 @@ object KafkaService extends App {
       log.info("FrameGrabber stopped")
     } catch {
       case ex: Exception => log.error("Error stopping FrameGrabber", ex)
+    }
+    try {
+      fs.close()
+      log.info("HDFS connection closed")
+    } catch {
+      case ex: Exception => log.error("Error closing HDFS connection", ex)
     }
     system.terminate()
   }
