@@ -1,0 +1,8 @@
+# video file
+video.mp4
+
+# Ignore log files
+*.log
+
+# VS Code
+.vscode/
