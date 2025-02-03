@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Stop Kafka-app
-docker compose -f docker-compose.kafka-app.yml down
+docker compose -f docker-compose.app.yml down
 
 # Wait for Kafka-app to be ready
-echo "Waiting for Kafka-app to stop..."
+echo "Waiting for All services to stop..."
 sleep 10
 
-echo "Kafka-app stopped."
+echo "All services stoped successfully."

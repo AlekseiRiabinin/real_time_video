@@ -8,7 +8,7 @@ docker compose -f docker-compose.app.yml up -d namenode datanode
 echo "Waiting for HDFS to start..."
 max_retries=30
 retry_count=0
-while ! docker exec namenode hdfs dfsadmin -report | grep -q "Live datanodes"; do
+while ! docker exec namenode hdfs dfsadmin -report >/dev/null 2>&1; do
     echo "HDFS is not ready yet. Waiting..."
     sleep 10
     retry_count=$((retry_count + 1))
@@ -25,9 +25,18 @@ echo "Checking if video.mp4 is already in HDFS..."
 if docker exec namenode hdfs dfs -test -e /videos/video.mp4; then
     echo "video.mp4 is already in HDFS. Skipping copy."
 else
+    # Check if video.mp4 exists in the local directory
+    if [ ! -f ./video.mp4 ]; then
+        echo "Error: video.mp4 not found in the local directory. Please ensure the file exists."
+        exit 1
+    fi
+
     # Copy video.mp4 to namenode container
     echo "Copying video.mp4 to namenode container..."
-    docker cp ./video.mp4 namenode:/tmp/video.mp4
+    if ! docker cp ./video.mp4 namenode:/tmp/video.mp4; then
+        echo "Error: Failed to copy video.mp4 to namenode container."
+        exit 1
+    fi
 
     # Create /videos directory in HDFS
     echo "Creating /videos directory in HDFS..."
@@ -121,12 +130,12 @@ else
     exit 1
 fi
 
-# Start Spark Master and Worker
-echo "Starting Spark Master and Worker..."
-docker compose -f docker-compose.kafka-app.yml up -d spark-master spark-worker
+# # Start Spark Master and Worker
+# echo "Starting Spark Master and Worker..."
+# docker compose -f docker-compose.kafka-app.yml up -d spark-master spark-worker
 
-# Start Spark job
-echo "Starting Spark job..."
-docker compose -f docker-compose.kafka-app.yml up -d spark-job
+# # Start Spark job
+# echo "Starting Spark job..."
+# docker compose -f docker-compose.kafka-app.yml up -d spark-job
 
 echo "All services started successfully."

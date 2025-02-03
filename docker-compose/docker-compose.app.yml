@@ -4,10 +4,13 @@ services:
     image: apache/hadoop:3.3.6
     container_name: namenode
     environment:
-      - HDFS_NAMENODE_OPTS=-Dhadoop.security.logger=INFO,RFAS -Xmx2G
-      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
-    volumes:
-      - namenode-data:/hadoop/dfs/name
+      # - HDFS_NAMENODE_OPTS=-Dhadoop.security.logger=INFO,RFAS -Xmx512M
+      # - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      # - YARN_ENABLED=true
+      - ENSURE_NAMENODE_DIR=/tmp/hadoop-root/dfs/name
+    command: ["hdfs", "namenode"]
+    # volumes:
+    #   - namenode-data:/hadoop/dfs/name
     ports:
       - "50070:50070"  # NameNode web UI
       - "8020:8020"    # HDFS port
@@ -24,11 +27,13 @@ services:
   datanode:
     image: apache/hadoop:3.3.6
     container_name: datanode
-    environment:
-      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
-      - HDFS_DATANODE_OPTS=-Dhadoop.security.logger=ERROR,RFAS -Xmx2G
-    volumes:
-      - datanode-data:/hadoop/dfs/data
+    # environment:
+    #   - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+    #   - HDFS_DATANODE_OPTS=-Dhadoop.security.logger=ERROR,RFAS -Xmx512M
+    #   - YARN_ENABLED=true
+    command: ["hdfs", "datanode"]
+    # volumes:
+    #   - datanode-data:/hadoop/dfs/data
     depends_on:
       - namenode
     networks:
