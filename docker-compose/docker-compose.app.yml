@@ -1,15 +1,14 @@
 services:
   # HDFS Namenode
   namenode:
-    # image: apache/hadoop:3.3.6
-    image: custom-hadoop-namenode:3.3.6-java11
+    image: custom-hadoop-namenode:3.2.1-java11
     container_name: namenode
     hostname: namenode
     environment:
       - ENSURE_NAMENODE_DIR=/tmp/hadoop-root/dfs/name
       - CLUSTER_NAME=hadoopvideo
-      # - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
-      # - HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check=false
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check=false
     env_file:
       - ./hadoop.env
     command: ["hdfs", "namenode"]
@@ -29,13 +28,12 @@ services:
 
   # HDFS Datanode
   datanode:
-    # image: apache/hadoop:3.3.6
-    image: custom-hadoop-datanode:3.3.6-java11    
+    image: custom-hadoop-datanode:3.2.1-java11    
     container_name: datanode
     hostname: datanode
     environment:
       - HDFS_CONF_dfs_datanode_data_dir=/hadoop/dfs/data
-      # - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
     env_file:
       - ./hadoop.env
     command: ["hdfs", "datanode"]

@@ -1,12 +1,36 @@
-FROM bde2020/hadoop-datanode:2.0.0-hadoop3.3.6-java8
+# Use a pre-built base image with Java 17
+FROM eclipse-temurin:17-jdk
 USER root
 
-# Install Java 11
+# Install Hadoop dependencies
 RUN apt-get update && \
-    apt-get install -y openjdk-11-jdk && \
-    update-alternatives --set java /usr/lib/jvm/java-11-openjdk-amd64/bin/java && \
-    update-alternatives --set javac /usr/lib/jvm/java-11-openjdk-amd64/bin/javac
+    apt-get install -y wget ssh pdsh && \
+    rm -rf /var/lib/apt/lists/*
 
+# Download and install Hadoop 3.3.6
+RUN wget https://downloads.apache.org/hadoop/common/hadoop-3.3.6/hadoop-3.3.6.tar.gz && \
+    tar -xzvf hadoop-3.3.6.tar.gz -C /usr/local/ && \
+    rm hadoop-3.3.6.tar.gz && \
+    ln -s /usr/local/hadoop-3.3.6 /usr/local/hadoop
+
+# Set environment variables
+ENV HADOOP_HOME /usr/local/hadoop
+ENV PATH $HADOOP_HOME/bin:$PATH
+
+# Configure SSH for Hadoop
+RUN ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa && \
+    cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys && \
+    chmod 0600 ~/.ssh/authorized_keys
+
+# Create Hadoop user
+RUN useradd -m hadoop
 USER hadoop
 
-# docker build -t custom-hadoop-datanode:3.3.6-java11 .
+# Expose ports
+EXPOSE 9864 9866 9867
+
+# Command to run DataNode
+CMD ["hdfs", "datanode"]
+
+# EXPOSE 9864 9866 9867
+# docker build -t custom-hadoop-datanode:3.3.6-java17 .
