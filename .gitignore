@@ -37,10 +37,6 @@ src_managed/
 .bsp/
 .scala-build/
 
-# Docker specific
-Dockerfile
-docker-compose.yml
-
 # VS Code specific
 .vscode/
 
