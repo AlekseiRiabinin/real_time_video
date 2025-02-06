@@ -3,7 +3,7 @@
 # Check if Namenode is formatted
 if [ ! -d "namenode-data/current" ]; then
     echo "Formatting Namenode..."
-    docker run --rm -v namenode-data:/hadoop/dfs/name alexflames77/custom-hadoop-namenode:3.3.6-java17 hdfs namenode -format
+    echo "Y" | docker run --rm -v namenode-data:/hadoop/dfs/name alexflames77/custom-hadoop-namenode:3.3.6-java17 hdfs namenode -format
 else
     echo "Namenode is already formatted."
 fi
