@@ -28,8 +28,15 @@ RUN useradd -m -s /bin/bash hadoop && \
     mkdir -p /usr/local/hadoop/logs && \
     chown -R hadoop:hadoop /usr/local/hadoop/logs
 
+# Create necessary directories
+RUN mkdir -p /hadoop/dfs/name
+RUN chown -R hadoop:hadoop /hadoop
+
 # Switch to hadoop user
 USER hadoop
+
+# Set the correct HDFS site configuration
+COPY hdfs-site.xml $HADOOP_HOME/etc/hadoop/hdfs-site.xml
 
 # Expose ports
 EXPOSE 50070 8020 9000

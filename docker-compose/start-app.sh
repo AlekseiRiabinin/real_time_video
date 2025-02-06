@@ -1,8 +1,14 @@
 #!/bin/bash
 
+# Check if Namenode is formatted
+if ! docker run --rm -v namenode-data:/hadoop/dfs/name alexflames77/custom-hadoop-namenode:3.3.6-java17 hdfs namenode -metadataVersion >/dev/null 2>&1; then
+    echo "Formatting Namenode..."
+    docker run --rm -v namenode-data:/hadoop/dfs/name alexflames77/custom-hadoop-namenode:3.3.6-java17 hdfs namenode -format -force
+fi
+
 # Start HDFS Namenode and Datanode
 echo "Starting HDFS Namenode and Datanode..."
-docker compose -f docker-compose.app.yml up -d --volume namenode datanode
+docker compose -f docker-compose.app.yml up -d namenode datanode
 
 # Wait for HDFS to be ready
 echo "Waiting for HDFS to start..."
@@ -139,3 +145,6 @@ fi
 # docker compose -f docker-compose.kafka-app.yml up -d spark-job
 
 echo "All services started successfully."
+
+# If this is the first time you are starting the Namenode, you need to format it. This initializes the metadata directory
+# docker run --rm -v namenode-data:/hadoop/dfs/name alexflames77/custom-hadoop-namenode:3.3.6-java17 hdfs namenode -format
