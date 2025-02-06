@@ -14,16 +14,21 @@ RUN wget https://downloads.apache.org/hadoop/common/hadoop-3.3.6/hadoop-3.3.6.ta
     ln -s /usr/local/hadoop-3.3.6 /usr/local/hadoop
 
 # Set environment variables
-ENV HADOOP_HOME /usr/local/hadoop
-ENV PATH $HADOOP_HOME/bin:$PATH
+ENV HADOOP_HOME=/usr/local/hadoop
+ENV PATH=$HADOOP_HOME/bin:$PATH
 
 # Configure SSH for Hadoop
 RUN ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa && \
     cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys && \
     chmod 0600 ~/.ssh/authorized_keys
 
-# Create Hadoop user
-RUN useradd -m hadoop
+# Create Hadoop user and set permissions
+RUN useradd -m -s /bin/bash hadoop && \
+    chown -R hadoop:hadoop $HADOOP_HOME && \
+    mkdir -p /usr/local/hadoop/logs && \
+    chown -R hadoop:hadoop /usr/local/hadoop/logs
+
+# Switch to hadoop user
 USER hadoop
 
 # Expose ports
@@ -32,5 +37,8 @@ EXPOSE 9864 9866 9867
 # Command to run DataNode
 CMD ["hdfs", "datanode"]
 
-# EXPOSE 9864 9866 9867
-# docker build -t custom-hadoop-datanode:3.3.6-java17 .
+# # Build the image
+# docker build -t alexflames77/custom-hadoop-datanode:3.3.6-java17 .
+
+# # Push the image with the first tag
+# docker push alexflames77/custom-hadoop-datanode:3.3.6-java17

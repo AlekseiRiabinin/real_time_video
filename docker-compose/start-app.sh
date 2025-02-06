@@ -2,7 +2,7 @@
 
 # Start HDFS Namenode and Datanode
 echo "Starting HDFS Namenode and Datanode..."
-docker compose -f docker-compose.app.yml up -d namenode datanode
+docker compose -f docker-compose.app.yml up -d --volume namenode datanode
 
 # Wait for HDFS to be ready
 echo "Waiting for HDFS to start..."

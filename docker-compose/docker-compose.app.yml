@@ -1,7 +1,7 @@
 services:
   # HDFS Namenode
   namenode:
-    image: custom-hadoop-namenode:3.2.1-java11
+    image: alexflames77/custom-hadoop-namenode:3.3.6-java17
     container_name: namenode
     hostname: namenode
     environment:
@@ -9,11 +9,18 @@ services:
       - CLUSTER_NAME=hadoopvideo
       - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
       - HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check=false
+      - CORE_CONF_hadoop_http_staticuser_user=root
+      - CORE_CONF_hadoop_proxyuser_hue_hosts=*
+      - CORE_CONF_hadoop_proxyuser_hue_groups=*
+      - HDFS_CONF_dfs_webhdfs_enabled=true
+      - HDFS_CONF_dfs_permissions_enabled=false
     env_file:
       - ./hadoop.env
     command: ["hdfs", "namenode"]
     volumes:
       - namenode-data:/hadoop/dfs/name
+      - hadoop-logs:/usr/local/hadoop/logs
+      - ./hdfs-site.xml:/etc/hadoop/conf/hdfs-site.xml
     ports:
       - "50070:50070"  # NameNode web UI
       - "8020:8020"    # HDFS port
@@ -28,7 +35,7 @@ services:
 
   # HDFS Datanode
   datanode:
-    image: custom-hadoop-datanode:3.2.1-java11    
+    image: alexflames77/custom-hadoop-datanode:3.3.6-java17    
     container_name: datanode
     hostname: datanode
     environment:
@@ -39,6 +46,8 @@ services:
     command: ["hdfs", "datanode"]
     volumes:
       - datanode-data:/hadoop/dfs/data
+      - hadoop-logs:/usr/local/hadoop/logs
+      - ./hdfs-site.xml:/etc/hadoop/conf/hdfs-site.xml
     depends_on:
       - namenode
     networks:
@@ -298,5 +307,6 @@ networks:
 volumes:
   namenode-data:
   datanode-data:
+  hadoop-logs:
   grafana-storage:
   prometheus-data:
