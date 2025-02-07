@@ -29,17 +29,20 @@ RUN useradd -m -s /bin/bash hadoop && \
     chown -R hadoop:hadoop /usr/local/hadoop/logs
 
 # Create necessary directories
-RUN mkdir -p /hadoop/dfs/data
-RUN chown -R hadoop:hadoop /hadoop
+RUN mkdir -p /hadoop/dfs/data && \
+    mkdir -p /tmp/hadoop && \
+    chown -R hadoop:hadoop /hadoop && \
+    chown -R hadoop:hadoop /tmp
+
+# Copy configuration files
+COPY ../core-site.xml $HADOOP_HOME/etc/hadoop/core-site.xml
+COPY ../hdfs-site.xml $HADOOP_HOME/etc/hadoop/hdfs-site.xml
 
 # Switch to hadoop user
 USER hadoop
 
-# # Set the correct HDFS site configuration
-# COPY hdfs-site.xml $HADOOP_HOME/etc/hadoop/hdfs-site.xml
-
 # Expose ports
-EXPOSE 9864 9866 9867
+EXPOSE 50075 1004 1006
 
 # Command to run DataNode
 CMD ["hdfs", "datanode"]

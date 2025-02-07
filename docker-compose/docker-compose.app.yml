@@ -15,15 +15,15 @@ services:
       - HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check=false
       - HDFS_CONF_dfs_webhdfs_enabled=true
       - HDFS_CONF_dfs_permissions_enabled=false
-    env_file:
-      - ./hadoop.env
+    # env_file:
+    #   - ./hadoop.env
     command: ["hdfs", "namenode"]
     user: "hadoop"
     volumes:
       - namenode-data:/hadoop/dfs/name
       - hadoop-logs:/usr/local/hadoop/logs
       # - ./hdfs-site.xml:/etc/hadoop/conf/hdfs-site.xml:ro
-      - ./core-site.xml:/usr/local/hadoop/etc/hadoop/core-site.xml:ro
+      # - ./core-site.xml:/usr/local/hadoop/etc/hadoop/core-site.xml:ro
     ports:
       - "50070:50070"  # NameNode web UI
       - "8020:8020"    # HDFS port
@@ -46,15 +46,19 @@ services:
       - HDFS_CONF_dfs_datanode_data_dir=/hadoop/dfs/data
       - HDFS_CONF_dfs_replication=1
       - HDFS_CONF_dfs_permissions_enabled=false
-    env_file:
-      - ./hadoop.env
+    # env_file:
+    #   - ./hadoop.env
     command: ["hdfs", "datanode"]
     user: "hadoop"
     volumes:
       - datanode-data:/hadoop/dfs/data
       - hadoop-logs:/usr/local/hadoop/logs
       # - ./hdfs-site.xml:/etc/hadoop/conf/hdfs-site.xml:ro
-      - ./core-site.xml:/usr/local/hadoop/etc/hadoop/core-site.xml:ro
+      # - ./core-site.xml:/usr/local/hadoop/etc/hadoop/core-site.xml:ro
+    ports:
+      - "50075:50075"  # DataNode web UI
+      - "1004:1004"    # DataNode auxiliary port
+      - "1006:1006"    # DataNode auxiliary port
     depends_on:
       - namenode
     networks:
@@ -313,7 +317,12 @@ networks:
 
 volumes:
   namenode-data:
+    name: namenode-data
   datanode-data:
+    name: datanode-data
   hadoop-logs:
+    name: hadoop-logs
   grafana-storage:
+    name: grafana-storage
   prometheus-data:
+    name: prometheus-data

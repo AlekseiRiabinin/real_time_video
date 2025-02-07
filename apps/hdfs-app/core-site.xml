@@ -4,8 +4,14 @@
         <name>fs.defaultFS</name>
         <value>hdfs://namenode:8020</value>
     </property>
+
     <property>
         <name>hadoop.tmp.dir</name>
-        <value>/tmp/hadoop-${user.name}</value>
+        <value>/tmp/hadoop</value>
     </property>
+
+    <!-- <property>
+        <name>io.file.buffer.size</name>
+        <value>131072</value>
+    </property> -->
 </configuration>

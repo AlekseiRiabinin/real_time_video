@@ -3,7 +3,7 @@
 # Check if Namenode is formatted
 if ! docker run --rm -v namenode-data:/hadoop/dfs/name alexflames77/custom-hadoop-namenode:3.3.6-java17 hdfs namenode -metadataVersion >/dev/null 2>&1; then
     echo "Formatting Namenode..."
-    docker run --rm -v namenode-data:/hadoop/dfs/name alexflames77/custom-hadoop-namenode:3.3.6-java17 hdfs namenode -format -force
+    docker run --rm -v namenode-data:/hadoop/dfs/name alexflames77/custom-hadoop-namenode:3.3.6-java17 hdfs namenode -format
 fi
 
 # Start HDFS Namenode and Datanode

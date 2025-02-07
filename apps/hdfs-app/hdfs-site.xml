@@ -24,4 +24,24 @@
         <name>dfs.namenode.datanode.registration.ip-hostname-check</name>
         <value>false</value>
     </property>
+
+    <property>
+        <name>dfs.webhdfs.enabled</name>
+        <value>true</value>
+    </property>
+
+    <property>
+        <name>fs.trash.interval</name>
+        <value>1440</value>
+    </property>
+
+    <!-- <property>
+        <name>dfs.namenode.handler.count</name>
+        <value>10</value>
+    </property> -->
+
+    <!-- <property>
+        <name>dfs.datanode.balance.bandwidthPerSec</name>
+        <value>1048576</value>
+    </property> -->
 </configuration>
