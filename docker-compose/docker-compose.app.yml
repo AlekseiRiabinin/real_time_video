@@ -175,6 +175,7 @@ services:
     environment:
       - FLINK_JOBMANAGER_HOST=jobmanager
       - FLINK_JOBMANAGER_PORT=8081
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
     command: >
       /bin/bash -c "
       java 
@@ -189,6 +190,8 @@ services:
     depends_on:
       - jobmanager
       - taskmanager
+      - kafka-1
+      - kafka-2
     restart: on-failure
     # deploy:
     #   resources:
@@ -261,10 +264,14 @@ services:
     container_name: spark-job
     environment:
       - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_HADOOP_FS_DEFAULTFS=hdfs://namenode:8020
     volumes:
       - ./models/saved_model:/opt/spark-apps/models/saved_model
     depends_on:
       - spark-master
+      - namenode
+      - kafka-1
+      - kafka-2      
     networks:
       - kafka-net
     restart: always

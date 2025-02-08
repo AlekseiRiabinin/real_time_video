@@ -1,14 +1,34 @@
 #!/bin/bash
 
-# Check if Namenode is formatted
-if ! docker run --rm -v namenode-data:/hadoop/dfs/name alexflames77/custom-hadoop-namenode:3.3.6-java17 hdfs namenode -metadataVersion >/dev/null 2>&1; then
-    echo "Formatting Namenode..."
-    docker run --rm -v namenode-data:/hadoop/dfs/name alexflames77/custom-hadoop-namenode:3.3.6-java17 hdfs namenode -format
-fi
+# Function to check if NameNode is formatted
+check_namenode_is_formatted() {
+    if ! docker exec namenode ls /hadoop/dfs/name/current/VERSION >/dev/null 2>&1; then
+        echo "NameNode is not formatted."
+        docker compose -f docker-compose.app.yml down
+        echo Run bash-script format-hdfs.sh first!
+    else
+        echo "NameNode is already formatted."
+    fi
+}
 
-# Start HDFS Namenode and Datanode
-echo "Starting HDFS Namenode and Datanode..."
+# Function to check for cluster ID mismatch
+check_cluster_id_mismatch() {
+    if docker compose -f docker-compose.app.yml logs datanode | grep -q "Incompatible clusterIDs"; then
+        echo "Detected cluster ID mismatch. Reformatting NameNode and clearing DataNode..."
+        docker compose -f docker-compose.app.yml down
+        echo Run bash-script format-hdfs.sh first!
+    fi
+}
+
+# Start all services
+echo "Starting HDFS services..."
 docker compose -f docker-compose.app.yml up -d namenode datanode
+
+# Check if NameNode is formatted
+check_namenode_is_formatted
+
+# Check for cluster ID mismatch
+check_cluster_id_mismatch
 
 # Wait for HDFS to be ready
 echo "Waiting for HDFS to start..."
@@ -136,15 +156,73 @@ else
     exit 1
 fi
 
-# # Start Spark Master and Worker
-# echo "Starting Spark Master and Worker..."
-# docker compose -f docker-compose.kafka-app.yml up -d spark-master spark-worker
+# Copy HDFS configuration files from Namenode to Spark container
+echo "Copying HDFS configuration files to Spark container..."
+
+# Copy core-site.xml
+if ! docker cp namenode:/usr/local/hadoop/etc/hadoop/core-site.xml ./core-site.xml; then
+    echo "Error: Failed to copy core-site.xml from namenode."
+    exit 1
+else
+    echo "Successfully copied core-site.xml from namenode."
+fi
+
+# Copy hdfs-site.xml
+if ! docker cp namenode:/usr/local/hadoop/etc/hadoop/hdfs-site.xml ./hdfs-site.xml; then
+    echo "Error: Failed to copy hdfs-site.xml from namenode."
+    exit 1
+else
+    echo "Successfully copied hdfs-site.xml from namenode."
+fi
+
+# Verify files on the host
+if [ -f ./core-site.xml ] && [ -f ./hdfs-site.xml ]; then
+    echo "HDFS configuration files successfully copied to the host."
+else
+    echo "Error: HDFS configuration files were not copied to the host."
+    exit 1
+fi
+
+# Copy files to Spark container
+if ! docker cp ./core-site.xml spark-job:/opt/spark/conf/core-site.xml; then
+    echo "Error: Failed to copy core-site.xml to spark-job."
+    exit 1
+else
+    echo "Successfully copied core-site.xml to spark-job."
+fi
+
+if ! docker cp ./hdfs-site.xml spark-job:/opt/spark/conf/hdfs-site.xml; then
+    echo "Error: Failed to copy hdfs-site.xml to spark-job."
+    exit 1
+else
+    echo "Successfully copied hdfs-site.xml to spark-job."
+fi
+
+# Clean up
+rm ./core-site.xml ./hdfs-site.xml
+echo "Temporary files removed."
+
+# Start Spark Master and Worker
+echo "Starting Spark Master and Worker..."
+docker compose -f docker-compose.kafka-app.yml up -d spark-master spark-worker
+
+echo "Waiting for Spark Master to be ready..."
+max_retries=30
+retry_count=0
+while ! docker exec spark-master curl -s http://spark-master:8080 | grep -q "Spark Master at spark://spark-master:7077"; do
+    echo "Spark Master is not ready yet. Waiting..."
+    sleep 5
+    retry_count=$((retry_count + 1))
+    if [ $retry_count -ge $max_retries ]; then
+        echo "Spark Master failed to start after $max_retries attempts. Exiting."
+        docker compose -f docker-compose.app.yml logs spark-master
+        exit 1
+    fi
+done
+echo "Spark Master is ready."
 
 # # Start Spark job
 # echo "Starting Spark job..."
 # docker compose -f docker-compose.kafka-app.yml up -d spark-job
 
 echo "All services started successfully."
-
-# If this is the first time you are starting the Namenode, you need to format it. This initializes the metadata directory
-# docker run --rm -v namenode-data:/hadoop/dfs/name alexflames77/custom-hadoop-namenode:3.3.6-java17 hdfs namenode -format
