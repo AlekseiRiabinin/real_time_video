@@ -44,4 +44,23 @@
         <name>dfs.datanode.balance.bandwidthPerSec</name>
         <value>1048576</value>
     </property> -->
+
+    <property>
+        <name>dfs.namenode.http-address</name>
+        <value>0.0.0.0:50070</value>
+    </property>
+    <property>
+        <name>dfs.namenode.https-address</name>
+        <value>0.0.0.0:50470</value>
+    </property>
+
+    <property>
+        <name>dfs.datanode.http.address</name>
+        <value>0.0.0.0:50075</value>
+    </property>
+    <property>
+        <name>dfs.datanode.https.address</name>
+        <value>0.0.0.0:50475</value>
+    </property>
+
 </configuration>

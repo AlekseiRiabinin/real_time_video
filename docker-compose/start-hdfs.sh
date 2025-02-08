@@ -1,16 +1,34 @@
 #!/bin/bash
 
-# Check if Namenode is formatted
-if ! docker exec namenode hdfs namenode -metadataVersion >/dev/null 2>&1; then
-    echo "Formatting Namenode..."
-    docker exec namenode hdfs namenode -format -force
-else
-    echo "Namenode is already formatted."
-fi
+# Function to check if NameNode is formatted
+check_namenode_is_formatted() {
+    if ! docker exec namenode ls /hadoop/dfs/name/current/VERSION >/dev/null 2>&1; then
+        echo "NameNode is not formatted."
+        docker compose -f docker-compose.app.yml down
+        echo Run bash-script format-hdfs.sh first!
+    else
+        echo "NameNode is already formatted."
+    fi
+}
 
-# Start HDFS Namenode and Datanode
-echo "Starting HDFS Namenode and Datanode..."
+# Function to check for cluster ID mismatch
+check_cluster_id_mismatch() {
+    if docker compose -f docker-compose.app.yml logs datanode | grep -q "Incompatible clusterIDs"; then
+        echo "Detected cluster ID mismatch. Reformatting NameNode and clearing DataNode..."
+        docker compose -f docker-compose.app.yml down
+        echo Run bash-script format-hdfs.sh first!
+    fi
+}
+
+# Start all services
+echo "Starting HDFS services..."
 docker compose -f docker-compose.app.yml up -d namenode datanode
+
+# Check if NameNode is formatted
+check_namenode_is_formatted
+
+# Check for cluster ID mismatch
+check_cluster_id_mismatch
 
 # Wait for HDFS to be ready
 echo "Waiting for HDFS to start..."

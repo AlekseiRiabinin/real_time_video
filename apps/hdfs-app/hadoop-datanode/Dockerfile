@@ -35,8 +35,8 @@ RUN mkdir -p /hadoop/dfs/data && \
     chown -R hadoop:hadoop /tmp
 
 # Copy configuration files
-COPY ../core-site.xml $HADOOP_HOME/etc/hadoop/core-site.xml
-COPY ../hdfs-site.xml $HADOOP_HOME/etc/hadoop/hdfs-site.xml
+COPY ./core-site.xml $HADOOP_HOME/etc/hadoop/core-site.xml
+COPY ./hdfs-site.xml $HADOOP_HOME/etc/hadoop/hdfs-site.xml
 
 # Switch to hadoop user
 USER hadoop
@@ -48,7 +48,7 @@ EXPOSE 50075 1004 1006
 CMD ["hdfs", "datanode"]
 
 # # Build the image
-# docker build -t alexflames77/custom-hadoop-datanode:3.3.6-java17 .
+# docker build -f hadoop-datanode/Dockerfile -t alexflames77/custom-hadoop-datanode:3.3.6-java17 .
 
 # # Push the image with the first tag
 # docker push alexflames77/custom-hadoop-datanode:3.3.6-java17
