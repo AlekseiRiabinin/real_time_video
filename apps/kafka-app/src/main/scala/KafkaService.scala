@@ -39,32 +39,32 @@ object KafkaService extends App {
 
   val log = LoggerFactory.getLogger(getClass)
   
-  // Set FFmpeg log callback for detailed logging
-  FFmpegLogCallback.set()
+  // // Set FFmpeg log callback for detailed logging
+  // FFmpegLogCallback.set()
 
-  // Ensure all necessary libraries are loaded
-  FFmpegFrameGrabber.tryLoad()
+  // // Ensure all necessary libraries are loaded
+  // FFmpegFrameGrabber.tryLoad()
 
-  // Signal handler for SIGTERM
-  Signal.handle(new Signal("TERM"), new SignalHandler {
-    def handle(sig: Signal): Unit = {
-      log.info(s"Received signal: ${sig.getName}")
-      releaseResources()
-    }
-  })
+  // // Signal handler for SIGTERM
+  // Signal.handle(new Signal("TERM"), new SignalHandler {
+  //   def handle(sig: Signal): Unit = {
+  //     log.info(s"Received signal: ${sig.getName}")
+  //     releaseResources()
+  //   }
+  // })
 
   // Kafka-broker configuration
   val bootstrapServers = "kafka-1:9092,kafka-2:9095"
   val topic = "video-stream"
 
-  // HDFS configuration
-  val hdfsURI = "hdfs://namenode:8020"
-  val conf = new Configuration()
-  conf.set("fs.defaultFS", hdfsURI)
-  val fs = FileSystem.get(new URI(hdfsURI), conf)
+  // // HDFS configuration
+  // val hdfsURI = "hdfs://namenode:8020"
+  // val conf = new Configuration()
+  // conf.set("fs.defaultFS", hdfsURI)
+  // val fs = FileSystem.get(new URI(hdfsURI), conf)
 
-  // Path to the video file in HDFS
-  val hdfsVideoPath = "/videos/video.mp4"
+  // // Path to the video file in HDFS
+  // val hdfsVideoPath = "/videos/video.mp4"
 
   // Prometheus metrics
   val frameProcessingTime = Histogram.build()
@@ -85,23 +85,23 @@ object KafkaService extends App {
   val server = new HTTPServer(9091)
   log.info("Prometheus HTTP server started on port 9091")
   
-  // Producer settings
-  val producerSettings = ProducerSettings(system, new ByteArraySerializer, new ByteArraySerializer)
-    .withBootstrapServers(bootstrapServers)
-    .withProperty("acks", "all") // Ensure all replicas acknowledge
-    .withProperty("batch.size", "200000") // For lower latency
-    .withProperty("linger.ms", "5") // For faster message delivery
-    .withProperty("retries", "5") // Avoid excessive retry attempts
-    .withProperty("retry.backoff.ms", "500") // For quicker retries
-    .withProperty("enable.idempotence", "true") // Ensure idempotent producer
-    .withProperty("connections.max.idle.ms", "10000")
-    .withProperty("request.timeout.ms", "30000")
-    .withProperty("compression.type", "snappy") // Enable compression
-    .withProperty("socket.connection.setup.timeout.ms", "30000")
-    .withProperty("socket.connection.setup.timeout.max.ms", "60000")
-    .withProperty("socket.request.max.bytes", "10485760")
-    .withProperty("max.request.size", "2097152") // Set to 2 MB
-    .withProperty("fetch.max.bytes", "2097152")
+  // // Producer settings
+  // val producerSettings = ProducerSettings(system, new ByteArraySerializer, new ByteArraySerializer)
+  //   .withBootstrapServers(bootstrapServers)
+  //   .withProperty("acks", "all") // Ensure all replicas acknowledge
+  //   .withProperty("batch.size", "200000") // For lower latency
+  //   .withProperty("linger.ms", "5") // For faster message delivery
+  //   .withProperty("retries", "5") // Avoid excessive retry attempts
+  //   .withProperty("retry.backoff.ms", "500") // For quicker retries
+  //   .withProperty("enable.idempotence", "true") // Ensure idempotent producer
+  //   .withProperty("connections.max.idle.ms", "10000")
+  //   .withProperty("request.timeout.ms", "30000")
+  //   .withProperty("compression.type", "snappy") // Enable compression
+  //   .withProperty("socket.connection.setup.timeout.ms", "30000")
+  //   .withProperty("socket.connection.setup.timeout.max.ms", "60000")
+  //   .withProperty("socket.request.max.bytes", "10485760")
+  //   .withProperty("max.request.size", "2097152") // Set to 2 MB
+  //   .withProperty("fetch.max.bytes", "2097152")
 
   // Consumer settings
   val consumerSettings = ConsumerSettings(system, new ByteArrayDeserializer, new StringDeserializer)
@@ -116,110 +116,106 @@ object KafkaService extends App {
     .withProperty(ConsumerConfig.REQUEST_TIMEOUT_MS_CONFIG, "30000")
     .withProperty(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, "1048576")
 
-  // // Initialize frame grabber
-  // val videoFilePath = "./video.mp4"
-  // val grabber = new FFmpegFrameGrabber(videoFilePath)
+  // // Download video from HDFS to a local temporary file
+  // val localVideoPath = "/tmp/video.mp4"
+  // try {
+  //   fs.copyToLocalFile(new Path(hdfsVideoPath), new Path(localVideoPath))
+  //   log.info(s"Video file downloaded from HDFS to $localVideoPath")
+  // } catch {
+  //   case ex: Exception =>
+  //     log.error(s"Error downloading video from HDFS: ${ex.getMessage}")
+  //     System.exit(1)
+  // }
 
-  // Download video from HDFS to a local temporary file
-  val localVideoPath = "/tmp/video.mp4"
-  try {
-    fs.copyToLocalFile(new Path(hdfsVideoPath), new Path(localVideoPath))
-    log.info(s"Video file downloaded from HDFS to $localVideoPath")
-  } catch {
-    case ex: Exception =>
-      log.error(s"Error downloading video from HDFS: ${ex.getMessage}")
-      System.exit(1)
-  }
+  // // Initialize frame grabber for the local video file
+  // val grabber = new FFmpegFrameGrabber(localVideoPath)
 
-  // Initialize frame grabber for the local video file
-  val grabber = new FFmpegFrameGrabber(localVideoPath)
+  // try {
+  //   // Set frame grabber options
+  //   grabber.setImageWidth(256) // Set the width of the captured image
+  //   grabber.setImageHeight(256) // Set the height of the captured image
+  //   grabber.setFrameRate(1) // Set the frame rate
 
-  try {
-    // Set frame grabber options
-    grabber.setImageWidth(256) // Set the width of the captured image
-    grabber.setImageHeight(256) // Set the height of the captured image
-    grabber.setFrameRate(1) // Set the frame rate
+  //   // Start the frame grabber
+  //   grabber.start()
+  //   log.info("Frame grabber started with options: width=256, height=256, frameRate=1")
+  // } catch {
+  //   case ex: Exception =>
+  //     log.error("Error starting frame grabber", ex)
+  //     System.exit(1) // Exit if the grabber fails to start
+  // }  
 
-    // Start the frame grabber
-    grabber.start()
-    log.info("Frame grabber started with options: width=256, height=256, frameRate=1")
-  } catch {
-    case ex: Exception =>
-      log.error("Error starting frame grabber", ex)
-      System.exit(1) // Exit if the grabber fails to start
-  }  
+  // val converter = new Java2DFrameConverter()
+  // if (grabber.grab() != null) {
+  //   log.info("Test frame grabbed successfully")
+  // } else {
+  //   log.error("Failed to grab a test frame. Camera might not be working.")
+  //   System.exit(1)
+  // }
 
-  val converter = new Java2DFrameConverter()
-  if (grabber.grab() != null) {
-    log.info("Test frame grabbed successfully")
-  } else {
-    log.error("Failed to grab a test frame. Camera might not be working.")
-    System.exit(1)
-  }
+  // // Add shutdown hook to release resources
+  // def releaseResources(): Unit = {
+  //   log.info("Shutting down...")
+  //   try {
+  //     grabber.stop()
+  //     log.info("FrameGrabber stopped")
+  //   } catch {
+  //     case ex: Exception => log.error("Error stopping FrameGrabber", ex)
+  //   }
+  //   try {
+  //     fs.close()
+  //     log.info("HDFS connection closed")
+  //   } catch {
+  //     case ex: Exception => log.error("Error closing HDFS connection", ex)
+  //   }
+  //   system.terminate()
+  // }
 
-  // Add shutdown hook to release resources
-  def releaseResources(): Unit = {
-    log.info("Shutting down...")
-    try {
-      grabber.stop()
-      log.info("FrameGrabber stopped")
-    } catch {
-      case ex: Exception => log.error("Error stopping FrameGrabber", ex)
-    }
-    try {
-      fs.close()
-      log.info("HDFS connection closed")
-    } catch {
-      case ex: Exception => log.error("Error closing HDFS connection", ex)
-    }
-    system.terminate()
-  }
+  // // Shutdown hook using sys.addShutdownHook
+  // sys.addShutdownHook {
+  //   releaseResources()
+  //   server.stop()
+  //   log.info("Prometheus HTTP server stopped")
+  // }
 
-  // Shutdown hook using sys.addShutdownHook
-  sys.addShutdownHook {
-    releaseResources()
-    server.stop()
-    log.info("Prometheus HTTP server stopped")
-  }
-
-  // Producer
-  val producer = Source
-    .tick(0.seconds, 300.milliseconds, ())
-    .mapAsync(1) { _ =>
-      Future {
-        val startTime = System.currentTimeMillis()
-        val frame = grabber.synchronized {
-          log.info("Attempting to grab frame")
-          grabber.grab()
-        }
-        val endTime = System.currentTimeMillis()
-        val processingTime = endTime - startTime
-        frameProcessingTime.observe(processingTime / 1000.0) // Update histogram
-        log.info(s"Frame processing time: $processingTime ms")
-        if (frame != null) {
-          log.info("Frame grabbed")
-          val bufferedImage = converter.convert(frame)
-          log.info("Frame converted to BufferedImage")
-          val byteArray = new Array[Byte](bufferedImage.getWidth * bufferedImage.getHeight * 3)
-          val raster = bufferedImage.getRaster
-          raster.getDataElements(0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray)
-          frameSize.set(byteArray.length) // Update gauge
-          framesProcessed.inc() // Increment counter
-          log.info("Copy pixel data into byte array")
-          new ProducerRecord[Array[Byte], Array[Byte]](topic, byteArray)
-        } else {  
-          log.info("End of video file reached")
-          releaseResources()
-          null
-        }
-      }.recover {
-        case ex: Exception =>
-        log.error("Error grabbing frame", ex)
-        null
-      }        
-    }
-    .filter(_ != null)
-    .runWith(Producer.plainSink(producerSettings))(materializer) // Use materializer
+  // // Producer
+  // val producer = Source
+  //   .tick(0.seconds, 300.milliseconds, ())
+  //   .mapAsync(1) { _ =>
+  //     Future {
+  //       val startTime = System.currentTimeMillis()
+  //       val frame = grabber.synchronized {
+  //         log.info("Attempting to grab frame")
+  //         grabber.grab()
+  //       }
+  //       val endTime = System.currentTimeMillis()
+  //       val processingTime = endTime - startTime
+  //       frameProcessingTime.observe(processingTime / 1000.0) // Update histogram
+  //       log.info(s"Frame processing time: $processingTime ms")
+  //       if (frame != null) {
+  //         log.info("Frame grabbed")
+  //         val bufferedImage = converter.convert(frame)
+  //         log.info("Frame converted to BufferedImage")
+  //         val byteArray = new Array[Byte](bufferedImage.getWidth * bufferedImage.getHeight * 3)
+  //         val raster = bufferedImage.getRaster
+  //         raster.getDataElements(0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray)
+  //         frameSize.set(byteArray.length) // Update gauge
+  //         framesProcessed.inc() // Increment counter
+  //         log.info("Copy pixel data into byte array")
+  //         new ProducerRecord[Array[Byte], Array[Byte]](topic, byteArray)
+  //       } else {  
+  //         log.info("End of video file reached")
+  //         releaseResources()
+  //         null
+  //       }
+  //     }.recover {
+  //       case ex: Exception =>
+  //       log.error("Error grabbing frame", ex)
+  //       null
+  //     }        
+  //   }
+  //   .filter(_ != null)
+  //   .runWith(Producer.plainSink(producerSettings))(materializer) // Use materializer
 
   // Consumer
   val numConsumers = 2 // Number of consumer instances
@@ -249,9 +245,15 @@ object KafkaService extends App {
   // Log application start
   log.info("Application started")
 
+  // // Keep the application running
+  // CoordinatedShutdown(system).addJvmShutdownHook {
+  //   releaseResources()
+  // }
+  // system.whenTerminated.onComplete(_ => releaseResources())
+
   // Keep the application running
-  CoordinatedShutdown(system).addJvmShutdownHook {
-    releaseResources()
+  sys.addShutdownHook {
+    system.terminate()
+    log.info("KafkaService stopped")
   }
-  system.whenTerminated.onComplete(_ => releaseResources())
 }

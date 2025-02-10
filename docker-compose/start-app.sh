@@ -20,6 +20,25 @@ check_cluster_id_mismatch() {
     fi
 }
 
+# Function to check if a file exists in the Spark container
+check_spark_file() {
+    local container_name=$1
+    local file_path=$2
+    if docker exec "$container_name" test -f "$file_path"; then
+        echo "File $file_path exists in the Spark container."
+        return 0
+    else
+        echo "File $file_path does not exist in the Spark container."
+        return 1
+    fi
+}
+
+# Spark container name and paths
+SPARK_CONTAINER="spark-job"
+SPARK_CONF_DIR="/opt/spark/conf"
+CORE_SITE_PATH="$SPARK_CONF_DIR/core-site.xml"
+HDFS_SITE_PATH="$SPARK_CONF_DIR/hdfs-site.xml"
+
 # Start all services
 echo "Starting HDFS services..."
 docker compose -f docker-compose.app.yml up -d namenode datanode
@@ -156,70 +175,60 @@ else
     exit 1
 fi
 
-# Copy HDFS configuration files from Namenode to Spark container
-echo "Copying HDFS configuration files to Spark container..."
+# # Check if files already exist in the Spark container
+# if check_spark_file "$SPARK_CONTAINER" "$CORE_SITE_PATH" && check_spark_file "$SPARK_CONTAINER" "$HDFS_SITE_PATH"; then
+#     echo "HDFS configuration files are already present in the Spark container."
+# else
+#     echo "Copying HDFS configuration files to Spark container..."
 
-# Copy core-site.xml
-if ! docker cp namenode:/usr/local/hadoop/etc/hadoop/core-site.xml ./core-site.xml; then
-    echo "Error: Failed to copy core-site.xml from namenode."
-    exit 1
-else
-    echo "Successfully copied core-site.xml from namenode."
-fi
+#     # Copy core-site.xml
+#     if ! docker cp namenode:/usr/local/hadoop/etc/hadoop/core-site.xml ./core-site.xml; then
+#         echo "Error: Failed to copy core-site.xml from namenode."
+#         exit 1
+#     else
+#         echo "Successfully copied core-site.xml from namenode."
+#     fi
 
-# Copy hdfs-site.xml
-if ! docker cp namenode:/usr/local/hadoop/etc/hadoop/hdfs-site.xml ./hdfs-site.xml; then
-    echo "Error: Failed to copy hdfs-site.xml from namenode."
-    exit 1
-else
-    echo "Successfully copied hdfs-site.xml from namenode."
-fi
+#     # Copy hdfs-site.xml
+#     if ! docker cp namenode:/usr/local/hadoop/etc/hadoop/hdfs-site.xml ./hdfs-site.xml; then
+#         echo "Error: Failed to copy hdfs-site.xml from namenode."
+#         exit 1
+#     else
+#         echo "Successfully copied hdfs-site.xml from namenode."
+#     fi
 
-# Verify files on the host
-if [ -f ./core-site.xml ] && [ -f ./hdfs-site.xml ]; then
-    echo "HDFS configuration files successfully copied to the host."
-else
-    echo "Error: HDFS configuration files were not copied to the host."
-    exit 1
-fi
+#     # Verify files on the host
+#     if [ -f ./core-site.xml ] && [ -f ./hdfs-site.xml ]; then
+#         echo "HDFS configuration files successfully copied to the host."
+#     else
+#         echo "Error: HDFS configuration files were not copied to the host."
+#         exit 1
+#     fi
 
-# Copy files to Spark container
-if ! docker cp ./core-site.xml spark-job:/opt/spark/conf/core-site.xml; then
-    echo "Error: Failed to copy core-site.xml to spark-job."
-    exit 1
-else
-    echo "Successfully copied core-site.xml to spark-job."
-fi
+#     # Copy files to Spark container
+#     if ! docker cp ./core-site.xml spark-job:/opt/spark/conf/core-site.xml; then
+#         echo "Error: Failed to copy core-site.xml to spark-job."
+#         exit 1
+#     else
+#         echo "Successfully copied core-site.xml to spark-job."
+#     fi
 
-if ! docker cp ./hdfs-site.xml spark-job:/opt/spark/conf/hdfs-site.xml; then
-    echo "Error: Failed to copy hdfs-site.xml to spark-job."
-    exit 1
-else
-    echo "Successfully copied hdfs-site.xml to spark-job."
-fi
+#     if ! docker cp ./hdfs-site.xml spark-job:/opt/spark/conf/hdfs-site.xml; then
+#         echo "Error: Failed to copy hdfs-site.xml to spark-job."
+#         exit 1
+#     else
+#         echo "Successfully copied hdfs-site.xml to spark-job."
+#     fi
 
-# Clean up
-rm ./core-site.xml ./hdfs-site.xml
-echo "Temporary files removed."
+#     # Clean up
+#     rm ./core-site.xml ./hdfs-site.xml
+#     echo "Temporary files removed."
+# fi
 
 # Start Spark Master and Worker
 echo "Starting Spark Master and Worker..."
-docker compose -f docker-compose.kafka-app.yml up -d spark-master spark-worker
-
-echo "Waiting for Spark Master to be ready..."
-max_retries=30
-retry_count=0
-while ! docker exec spark-master curl -s http://spark-master:8080 | grep -q "Spark Master at spark://spark-master:7077"; do
-    echo "Spark Master is not ready yet. Waiting..."
-    sleep 5
-    retry_count=$((retry_count + 1))
-    if [ $retry_count -ge $max_retries ]; then
-        echo "Spark Master failed to start after $max_retries attempts. Exiting."
-        docker compose -f docker-compose.app.yml logs spark-master
-        exit 1
-    fi
-done
-echo "Spark Master is ready."
+docker compose -f docker-compose.app.yml up -d spark-master spark-worker
+echo "Spark Master and Worker are ready."
 
 # # Start Spark job
 # echo "Starting Spark job..."

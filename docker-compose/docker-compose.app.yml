@@ -220,6 +220,8 @@ services:
   # Spark Master
   spark-master:
     image: bitnami/spark:3.5.4
+    container_name: spark-master
+    hostname: spark-master
     environment:
       - SPARK_MODE=master
       - SPARK_MASTER_URL=spark://spark-master:7077
@@ -242,11 +244,16 @@ services:
   # Spark Worker
   spark-worker:
     image: bitnami/spark:3.5.4
+    container_name: spark-worker
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_WORKER_MEMORY=1G
       - SPARK_WORKER_CORES=1
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
     depends_on:
       - spark-master
     networks:
@@ -274,7 +281,7 @@ services:
       - kafka-2      
     networks:
       - kafka-net
-    restart: always
+    restart: on-failure
     # deploy:
     #   resources:
     #     limits:
