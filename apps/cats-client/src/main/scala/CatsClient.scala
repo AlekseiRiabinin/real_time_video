@@ -1,13 +1,15 @@
-import zio._
-import zio.kafka.producer._
-import zio.kafka.serde._
-import org.apache.kafka.clients.producer.ProducerRecord
+import cats.effect.{IO, IOApp, Resource}
+import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord}
+import org.apache.kafka.common.serialization.ByteArraySerializer
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
 import java.net.URI
 import org.bytedeco.javacv.{FFmpegFrameGrabber, Java2DFrameConverter}
+import scala.concurrent.duration._
+import java.util.Properties
 
-object ZIOClient extends ZIOAppDefault {
+
+object CatsClient extends IOApp.Simple {
 
   // HDFS configuration
   val hdfsURI = "hdfs://namenode:8020"
@@ -22,23 +24,24 @@ object ZIOClient extends ZIOAppDefault {
   // Path to the video file in HDFS
   val hdfsVideoPath = "/videos/video.mp4"
 
-  // Kafka Producer Settings
-  val producerSettings: ProducerSettings = ProducerSettings(
-    bootstrapServers = List(kafkaBootstrapServers)
-  )
+  // Kafka Producer Properties
+  val kafkaProps: Properties = new Properties()
+  kafkaProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServers)
+  kafkaProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, classOf[ByteArraySerializer].getName)
+  kafkaProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, classOf[ByteArraySerializer].getName)
 
-  // ZIO Layer for Kafka Producer
-  val producerLayer: ZLayer[Any, Throwable, Producer] =
-    ZLayer.scoped(Producer.make(producerSettings))
+  // Resource for Kafka Producer
+  def kafkaProducerResource: Resource[IO, KafkaProducer[Array[Byte], Array[Byte]]] =
+    Resource.make(IO(new KafkaProducer[Array[Byte], Array[Byte]](kafkaProps)))(producer => IO(producer.close()))
 
   // Function to process video frames and send them to Kafka
-  def processVideoFrames(producer: Producer): ZIO[Any, Throwable, Unit] = {
+  def processVideoFrames(producer: KafkaProducer[Array[Byte], Array[Byte]]): IO[Unit] = {
     val localVideoPath = "/tmp/video.mp4"
 
-    for {
-      _ <- ZIO.attempt(fs.copyToLocalFile(new Path(hdfsVideoPath), new Path(localVideoPath)))
-      _ <- ZIO.attempt(println(s"Video file downloaded from HDFS to $localVideoPath"))
-      _ <- ZIO.attemptBlocking {
+    // Download the video file from HDFS to a local temporary file
+    IO(fs.copyToLocalFile(new Path(hdfsVideoPath), new Path(localVideoPath))) *>
+      IO(println(s"Video file downloaded from HDFS to $localVideoPath")) *>
+      IO.blocking {
         val grabber = new FFmpegFrameGrabber(localVideoPath)
         grabber.setImageWidth(256) // Set the width of the captured image
         grabber.setImageHeight(256) // Set the height of the captured image
@@ -56,23 +59,22 @@ object ZIOClient extends ZIOAppDefault {
 
           // Send the frame to Kafka
           val record = new ProducerRecord[Array[Byte], Array[Byte]](kafkaTopic, Array.empty[Byte], byteArray)
-          producer.produce(record, Serde.byteArray, Serde.byteArray).catchAll { ex =>
-            ZIO.attempt(println(s"Error sending frame to Kafka: ${ex.getMessage}"))
-          }.forkDaemon // Run in the background
+          producer.send(record).get() // Blocking call, but wrapped in IO.blocking
           println("Frame sent to Kafka")
 
           frame = grabber.grab()
         }
 
         println("End of video file reached")
-      }.catchAll { ex =>
-        ZIO.attempt(println(s"Error processing video: ${ex.getMessage}"))
+      }.handleErrorWith { ex =>
+        IO(println(s"Error processing video: ${ex.getMessage}"))
       }
-    } yield ()
   }
 
   // Main entry point
-  override def run: ZIO[Any, Throwable, Unit] = {
-    ZIO.serviceWithZIO[Producer](processVideoFrames).provideLayer(producerLayer)
+  override def run: IO[Unit] = {
+    kafkaProducerResource.use { producer =>
+      processVideoFrames(producer)
+    }
   }
 }

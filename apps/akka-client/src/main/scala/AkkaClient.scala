@@ -2,7 +2,7 @@ import akka.actor.ActorSystem
 import akka.kafka.ProducerSettings
 import akka.kafka.scaladsl.Producer
 import akka.stream.scaladsl.{Sink, Source}
-import akka.stream.{ActorMaterializer, ActorMaterializerSettings, Materializer}
+import akka.stream.{ActorMaterializer, Materializer}
 import com.typesafe.config.ConfigFactory
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.serialization.ByteArraySerializer
@@ -15,11 +15,10 @@ import io.prometheus.client.exporter.HTTPServer
 import io.prometheus.client.hotspot.DefaultExports
 import io.prometheus.client.{CollectorRegistry, Counter, Gauge, Histogram}
 
-
 object AkkaClient extends App {
   implicit val system: ActorSystem = ActorSystem("AkkaClientSystem")
   implicit val materializer: Materializer = Materializer(system)
-  
+
   val log = LoggerFactory.getLogger(getClass)
 
   // Load configuration
@@ -86,7 +85,7 @@ object AkkaClient extends App {
     // Download the video file from HDFS to a local temporary file
     val localVideoPath = "/tmp/video.mp4"
     fs.copyToLocalFile(new Path(hdfsVideoPath), new Path(localVideoPath))
-    println(s"Video file downloaded from HDFS to $localVideoPath")
+    log.info(s"Video file downloaded from HDFS to $localVideoPath")
 
     // Initialize frame grabber for the local video file
     val grabber = new FFmpegFrameGrabber(localVideoPath)

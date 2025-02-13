@@ -10,10 +10,10 @@ import java.util.Properties
 object KafkaClient {
   def main(args: Array[String]): Unit = {
     // HDFS configuration
-    val hdfsUri = "hdfs://namenode:8020"
+    val hdfsURI = "hdfs://namenode:8020"
     val conf = new Configuration()
-    conf.set("fs.defaultFS", hdfsUri)
-    val fs = FileSystem.get(new URI(hdfsUri), conf)
+    conf.set("fs.defaultFS", hdfsURI)
+    val fs = FileSystem.get(new URI(hdfsURI), conf)
 
     // Kafka configuration
     val kafkaBootstrapServers = "kafka-1:9092,kafka-2:9095"
