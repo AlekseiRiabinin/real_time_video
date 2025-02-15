@@ -15,6 +15,7 @@ import io.prometheus.client.exporter.HTTPServer
 import io.prometheus.client.hotspot.DefaultExports
 import io.prometheus.client.{CollectorRegistry, Counter, Gauge, Histogram}
 
+
 object AkkaClient extends App {
   implicit val system: ActorSystem = ActorSystem("AkkaClientSystem")
   implicit val materializer: Materializer = Materializer(system)
