@@ -17,13 +17,13 @@ import io.prometheus.client.{CollectorRegistry, Counter, Gauge, Histogram}
 object ZIOClient extends ZIOAppDefault {
 
   // Configuration case classes
-  case class HdfsConfig(uri: String)
+  case class HdfsConfig(uri: String, videoPath: String)
   case class KafkaConfig(bootstrapServers: String, topic: String)
   case class VideoConfig(frameWidth: Int, frameHeight: Int, frameRate: Int)
   case class AppConfig(hdfs: HdfsConfig, kafka: KafkaConfig, video: VideoConfig)
 
   // Load configuration from application.conf
-  val configLayer: ZLayer[Any, ReadError[String], AppConfig] = 
+  val configLayer: ZLayer[Any, ReadError[String], AppConfig] =
     TypesafeConfig.fromResourcePath(
       descriptor[AppConfig]
     )
@@ -58,7 +58,7 @@ object ZIOClient extends ZIOAppDefault {
         val conf = new Configuration()
         conf.set("fs.defaultFS", config.hdfs.uri)
         val fs = FileSystem.get(new URI(config.hdfs.uri), conf)
-        fs.copyToLocalFile(new Path(config.hdfs.uri + "/videos/video.mp4"), new Path(localVideoPath))
+        fs.copyToLocalFile(new Path(config.hdfs.videoPath), new Path(localVideoPath))
       }
       _ <- ZIO.attempt(println(s"Video file downloaded from HDFS to $localVideoPath"))
       _ <- ZIO.attemptBlocking {
