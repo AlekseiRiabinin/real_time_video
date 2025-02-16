@@ -2,21 +2,20 @@ import cats.effect.{IO, IOApp, Resource}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord}
 import org.apache.kafka.common.serialization.ByteArraySerializer
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.hadoop.fs.{FileSystem, Path, FSDataInputStream}
 import java.net.URI
 import org.bytedeco.javacv.{FFmpegFrameGrabber, Java2DFrameConverter}
 import io.prometheus.client.exporter.HTTPServer
 import io.prometheus.client.hotspot.DefaultExports
 import io.prometheus.client.{CollectorRegistry, Counter, Gauge, Histogram}
 import com.typesafe.config.ConfigFactory
-import scala.concurrent.duration._
 import java.util.Properties
 
 
 object CatsClient extends IOApp.Simple {
 
   // Configuration case classes
-  case class HdfsConfig(uri: String)
+  case class HdfsConfig(uri: String, videoPath: String)
   case class KafkaConfig(bootstrapServers: String, topic: String)
   case class VideoConfig(frameWidth: Int, frameHeight: Int, frameRate: Int)
   case class AppConfig(hdfs: HdfsConfig, kafka: KafkaConfig, video: VideoConfig)
@@ -24,7 +23,7 @@ object CatsClient extends IOApp.Simple {
   // Load configuration from application.conf
   val config = ConfigFactory.load()
   val appConfig = AppConfig(
-    HdfsConfig(config.getString("hdfs.uri")),
+    HdfsConfig(config.getString("hdfs.uri"), config.getString("hdfs.video-path")),
     KafkaConfig(config.getString("kafka.bootstrap-servers"), config.getString("kafka.topic")),
     VideoConfig(config.getInt("video.frame-width"), config.getInt("video.frame-height"), config.getInt("video.frame-rate"))
   )
@@ -65,15 +64,15 @@ object CatsClient extends IOApp.Simple {
   def kafkaProducerResource: Resource[IO, KafkaProducer[Array[Byte], Array[Byte]]] =
     Resource.make(IO(new KafkaProducer[Array[Byte], Array[Byte]](kafkaProps)))(producer => IO(producer.close()))
 
+  // Resource for HDFS InputStream
+  def hdfsInputStreamResource: Resource[IO, FSDataInputStream] =
+    Resource.make(IO(fs.open(new Path(appConfig.hdfs.videoPath))))(stream => IO(stream.close()))
+
   // Function to process video frames and send them to Kafka
   def processVideoFrames(producer: KafkaProducer[Array[Byte], Array[Byte]]): IO[Unit] = {
-    val localVideoPath = "/tmp/video.mp4"
-
-    // Download the video file from HDFS to a local temporary file
-    IO(fs.copyToLocalFile(new Path(appConfig.hdfs.uri + "/videos/video.mp4"), new Path(localVideoPath))) *>
-      IO(println(s"Video file downloaded from HDFS to $localVideoPath")) *>
+    hdfsInputStreamResource.use { hdfsInputStream =>
       IO.blocking {
-        val grabber = new FFmpegFrameGrabber(localVideoPath)
+        val grabber = new FFmpegFrameGrabber(hdfsInputStream)
         grabber.setImageWidth(appConfig.video.frameWidth)
         grabber.setImageHeight(appConfig.video.frameHeight)
         grabber.setFrameRate(appConfig.video.frameRate)
@@ -95,7 +94,7 @@ object CatsClient extends IOApp.Simple {
           frameProductionTime.observe((System.nanoTime() - startTime) / 1e9)
 
           // Send the frame to Kafka
-          val record = new ProducerRecord[Array[Byte], Array[Byte]](appConfig.kafka.topic, Array.empty[Byte], byteArray)
+          val record = new ProducerRecord[Array[Byte], Array[Byte]](appConfig.kafka.topic, byteArray)
           producer.send(record).get() // Blocking call, but wrapped in IO.blocking
           println("Frame sent to Kafka")
 
@@ -107,6 +106,7 @@ object CatsClient extends IOApp.Simple {
         frameProductionErrors.inc()
         IO(println(s"Error processing video: ${ex.getMessage}"))
       }
+    }
   }
 
   // Main entry point

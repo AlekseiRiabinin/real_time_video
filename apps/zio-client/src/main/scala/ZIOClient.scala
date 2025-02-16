@@ -6,12 +6,13 @@ import zio.config.magnolia._
 import zio.config.typesafe._
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.hadoop.fs.{FileSystem, Path, FSDataInputStream}
 import java.net.URI
 import org.bytedeco.javacv.{FFmpegFrameGrabber, Java2DFrameConverter}
 import io.prometheus.client.exporter.HTTPServer
 import io.prometheus.client.hotspot.DefaultExports
 import io.prometheus.client.{CollectorRegistry, Counter, Gauge, Histogram}
+import zio.stream.ZStream
 
 
 object ZIOClient extends ZIOAppDefault {
@@ -51,27 +52,32 @@ object ZIOClient extends ZIOAppDefault {
 
   // Function to process video frames and send them to Kafka
   def processVideoFrames(producer: Producer, config: AppConfig): ZIO[Any, Throwable, Unit] = {
-    val localVideoPath = "/tmp/video.mp4"
-
     for {
-      _ <- ZIO.attempt {
+      // Open HDFS input stream
+      hdfsInputStream <- ZIO.attemptBlocking {
         val conf = new Configuration()
         conf.set("fs.defaultFS", config.hdfs.uri)
         val fs = FileSystem.get(new URI(config.hdfs.uri), conf)
-        fs.copyToLocalFile(new Path(config.hdfs.videoPath), new Path(localVideoPath))
+        fs.open(new Path(config.hdfs.videoPath))
       }
-      _ <- ZIO.attempt(println(s"Video file downloaded from HDFS to $localVideoPath"))
-      _ <- ZIO.attemptBlocking {
-        val grabber = new FFmpegFrameGrabber(localVideoPath)
+      _ <- ZIO.attempt(println(s"Video file opened from HDFS: ${config.hdfs.videoPath}"))
+
+      // Initialize FFmpegFrameGrabber with the HDFS input stream
+      grabber <- ZIO.attemptBlocking {
+        val grabber = new FFmpegFrameGrabber(hdfsInputStream)
         grabber.setImageWidth(config.video.frameWidth)
         grabber.setImageHeight(config.video.frameHeight)
         grabber.setFrameRate(config.video.frameRate)
         grabber.start()
+        grabber
+      }
 
-        val converter = new Java2DFrameConverter()
+      converter = new Java2DFrameConverter()
 
-        var frame = grabber.grab()
-        while (frame != null) {
+      // ZStream to process frames and send them to Kafka
+      frameStream = ZStream.unfold(()) { _ =>
+        val frame = grabber.grab()
+        if (frame != null) {
           val startTime = java.lang.System.nanoTime()
           val bufferedImage = converter.convert(frame)
           val byteArray = new Array[Byte](bufferedImage.getWidth * bufferedImage.getHeight * 3)
@@ -83,22 +89,24 @@ object ZIOClient extends ZIOAppDefault {
           frameSize.set(byteArray.length)
           frameProductionTime.observe((java.lang.System.nanoTime() - startTime) / 1e9)
 
-          // Send the frame to Kafka
-          val record = new ProducerRecord[Array[Byte], Array[Byte]](config.kafka.topic, Array.empty[Byte], byteArray)
-          producer.produce(record, Serde.byteArray, Serde.byteArray).catchAll { ex =>
-            frameProductionErrors.inc()
-            ZIO.attempt(println(s"Error sending frame to Kafka: ${ex.getMessage}"))
-          }.forkDaemon // Run in the background
-          println("Frame sent to Kafka")
-
-          frame = grabber.grab()
+          Some((byteArray, ()))
+        } else {
+          None
         }
-
-        println("End of video file reached")
-      }.catchAll { ex =>
-        frameProductionErrors.inc()
-        ZIO.attempt(println(s"Error processing video: ${ex.getMessage}"))
       }
+
+      // Process the stream and send frames to Kafka
+      _ <- frameStream
+        .mapZIO { byteArray =>
+          val record = new ProducerRecord[Array[Byte], Array[Byte]](config.kafka.topic, byteArray)
+          producer.produce(record, Serde.byteArray, Serde.byteArray)
+            .catchAll { ex =>
+              frameProductionErrors.inc()
+              ZIO.attempt(println(s"Error sending frame to Kafka: ${ex.getMessage}"))
+            }
+            .forkDaemon // Run in the background
+        }
+        .runDrain
     } yield ()
   }
 

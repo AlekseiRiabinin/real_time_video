@@ -118,15 +118,3 @@ object KafkaService extends App {
     log.info("KafkaService stopped")
   }
 }
-
-// METRICS
-
-// messages_consumed_total: Total number of messages consumed.
-
-// message_consumption_time_seconds: Time taken to consume each message.
-
-// message_consumption_errors_total: Total number of message consumption errors.
-
-// consumer_lag_seconds: Time lag between message production and consumption.
-
-// resource_usage: CPU, memory, and network usage (use default Prometheus JVM metrics).

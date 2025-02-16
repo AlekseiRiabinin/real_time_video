@@ -77,13 +77,12 @@ object KafkaClient {
     println("Prometheus HTTP server started on port 9091")
 
     try {
-      // Download the video file from HDFS to a local temporary file
-      val localVideoPath = "/tmp/video.mp4"
-      fs.copyToLocalFile(new Path(appConfig.hdfs.videoPath), new Path(localVideoPath))
-      println(s"Video file downloaded from HDFS to $localVideoPath")
+      // Open an InputStream to read the video file directly from HDFS
+      val hdfsInputStream = fs.open(new Path(appConfig.hdfs.videoPath))
+      println(s"Video file opened from HDFS: ${appConfig.hdfs.videoPath}")
 
-      // Initialize frame grabber for the local video file
-      val grabber = new FFmpegFrameGrabber(localVideoPath)
+      // Initialize frame grabber with the HDFS InputStream
+      val grabber = new FFmpegFrameGrabber(hdfsInputStream)
       grabber.setImageWidth(appConfig.video.frameWidth)
       grabber.setImageHeight(appConfig.video.frameHeight)
       grabber.setFrameRate(appConfig.video.frameRate)

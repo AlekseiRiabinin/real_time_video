@@ -22,45 +22,60 @@ object AkkaClient extends App {
 
   val log = LoggerFactory.getLogger(getClass)
 
-  // Load configuration
+  // Configuration case classes
+  case class HdfsConfig(uri: String, videoPath: String)
+  case class KafkaConfig(bootstrapServers: String, topic: String)
+  case class VideoConfig(frameWidth: Int, frameHeight: Int, frameRate: Int)
+  case class AppConfig(hdfs: HdfsConfig, kafka: KafkaConfig, video: VideoConfig)
+
+  // Load configuration from application.conf
   val config = ConfigFactory.load()
-  val hdfsURI = config.getString("hdfs.uri")
-  val bootstrapServers = config.getString("kafka.bootstrap-servers")
-  val topic = config.getString("kafka.topic")
-  val frameWidth = config.getInt("video.frame-width")
-  val frameHeight = config.getInt("video.frame-height")
-  val frameRate = config.getInt("video.frame-rate")
+  val appConfig = AppConfig(
+    HdfsConfig(
+      uri = config.getString("hdfs.uri"),
+      videoPath = config.getString("hdfs.video-path")
+    ),
+    KafkaConfig(
+      bootstrapServers = config.getString("kafka.bootstrap-servers"),
+      topic = config.getString("kafka.topic")
+    ),
+    VideoConfig(
+      frameWidth = config.getInt("video.frame-width"),
+      frameHeight = config.getInt("video.frame-height"),
+      frameRate = config.getInt("video.frame-rate")
+    )
+  )
 
   // HDFS configuration
   val conf = new Configuration()
-  conf.set("fs.defaultFS", hdfsURI)
-  val fs = FileSystem.get(new URI(hdfsURI), conf)
+  conf.set("fs.defaultFS", appConfig.hdfs.uri)
+  val fs = FileSystem.get(new URI(appConfig.hdfs.uri), conf)
 
   // Kafka producer settings
   val producerSettings = ProducerSettings(system, new ByteArraySerializer, new ByteArraySerializer)
-    .withBootstrapServers(bootstrapServers)
+    .withBootstrapServers(appConfig.kafka.bootstrapServers)
     .withProperty("acks", "all")
     .withProperty("retries", "3")
     .withProperty("linger.ms", "5")
     .withProperty("compression.type", "snappy")
 
   // Prometheus metrics for producer
-  val framesProduced = Counter.build()
+  val framesProduced: Counter = Counter.build()
     .name("frames_produced_total")
     .help("Total number of frames produced")
     .register()
 
-  val frameProductionTime = Histogram.build()
+  val frameProductionTime: Histogram = Histogram.build()
     .name("frame_production_time_seconds")
     .help("Time taken to produce each frame")
     .register()
 
-  val frameProductionErrors = Counter.build()
+  val frameProductionErrors: Counter = Counter.build()
     .name("frame_production_errors_total")
     .help("Total number of frame production errors")
     .register()
 
-  val frameSize = Gauge.build()
+  val frameSize: Gauge = Gauge.build()
     .name("frame_size_bytes")
     .help("Size of each frame in bytes")
     .register()
@@ -69,9 +84,6 @@ object AkkaClient extends App {
   DefaultExports.initialize()
   val server = new HTTPServer(9091)
   log.info("Prometheus HTTP server started on port 9091")
-
-  // Path to the video file in HDFS
-  val hdfsVideoPath = "/videos/video.mp4"
 
   // Shutdown hook
   sys.addShutdownHook {
@@ -83,16 +95,15 @@ object AkkaClient extends App {
   }
 
   try {
-    // Download the video file from HDFS to a local temporary file
-    val localVideoPath = "/tmp/video.mp4"
-    fs.copyToLocalFile(new Path(hdfsVideoPath), new Path(localVideoPath))
-    log.info(s"Video file downloaded from HDFS to $localVideoPath")
+    // Open an InputStream to read the video file directly from HDFS
+    val hdfsInputStream = fs.open(new Path(appConfig.hdfs.videoPath))
+    log.info(s"Video file opened from HDFS: ${appConfig.hdfs.videoPath}")
 
-    // Initialize frame grabber for the local video file
-    val grabber = new FFmpegFrameGrabber(localVideoPath)
-    grabber.setImageWidth(frameWidth)
-    grabber.setImageHeight(frameHeight)
-    grabber.setFrameRate(frameRate)
+    // Initialize frame grabber with the HDFS InputStream
+    val grabber = new FFmpegFrameGrabber(hdfsInputStream)
+    grabber.setImageWidth(appConfig.video.frameWidth)
+    grabber.setImageHeight(appConfig.video.frameHeight)
+    grabber.setFrameRate(appConfig.video.frameRate)
     grabber.start()
 
     val converter = new Java2DFrameConverter()
@@ -120,7 +131,7 @@ object AkkaClient extends App {
         framesProduced.inc() // Increment frames produced counter
         frameSize.set(byteArray.length) // Update frame size gauge
 
-        val record = new ProducerRecord[Array[Byte], Array[Byte]](topic, byteArray)
+        val record = new ProducerRecord[Array[Byte], Array[Byte]](appConfig.kafka.topic, byteArray)
 
         val endTime = System.nanoTime()
         frameProductionTime.observe((endTime - startTime) / 1e9) // Update production time histogram
@@ -142,15 +153,3 @@ object AkkaClient extends App {
       log.error(s"Error processing video: ${ex.getMessage}")
   }
 }
-
-// METRICS:
-
-// frames_produced_total: Total number of frames produced.
-
-// frame_production_time_seconds: Time taken to produce each frame.
-
-// frame_production_errors_total: Total number of frame production errors.
-
-// frame_size_bytes: Size of each frame in bytes.
-
-// resource_usage: CPU, memory, and network usage (use default Prometheus JVM metrics).
