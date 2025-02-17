@@ -33,11 +33,68 @@ check_spark_file() {
     fi
 }
 
+# Function to start a specific producer
+start_producer() {
+  local producer_type=$1
+  case $producer_type in
+    kafka)
+      echo "Starting Kafka Client..."
+      docker compose -f docker-compose.app.yml up -d kafka-client
+
+      # Wait for Kafka Client to be ready
+      echo "Waiting for Kafka Client to start..."
+      sleep 10
+
+      # Check if Kafka Client is running
+      echo "Checking if Kafka Client is running..."
+      if docker ps | grep -q "kafka-client"; then
+        echo "Kafka Client is running."
+      else
+        echo "Error: Kafka Client is not running. Check the logs for more information."
+        docker compose -f docker-compose.app.yml logs kafka-client
+        exit 1
+      fi
+      ;;
+    akka)
+      echo "Starting Akka Client..."
+      docker compose -f docker-compose.app.yml up -d akka-client
+
+      # Wait for Akka Client to be ready
+      echo "Waiting for Akka Client to start..."
+      sleep 10
+
+      # Check if Akka Client is running
+      echo "Checking if Akka Client is running..."
+      if docker ps | grep -q "akka-client"; then
+        echo "Akka Client is running."
+      else
+        echo "Error: Akka Client is not running. Check the logs for more information."
+        docker compose -f docker-compose.app.yml logs akka-client
+        exit 1
+      fi
+      ;;
+    *)
+      echo "Invalid producer type. Use 'kafka' or 'akka'."
+      exit 1
+      ;;
+  esac
+}
+
+# Main script
+if [ $# -ne 1 ]; then
+  echo "Usage: $0 <producer-type>"
+  echo "  <producer-type>: kafka | akka"
+  exit 1
+fi
+
 # Spark container name and paths
 SPARK_CONTAINER="spark-job"
 SPARK_CONF_DIR="/opt/spark/conf"
 CORE_SITE_PATH="$SPARK_CONF_DIR/core-site.xml"
 HDFS_SITE_PATH="$SPARK_CONF_DIR/hdfs-site.xml"
+
+# Producer type
+PRODUCER_TYPE=$1
 
 # Start all services
 echo "Starting HDFS services..."
@@ -234,4 +291,11 @@ echo "Spark Master and Worker are ready."
 # echo "Starting Spark job..."
 # docker compose -f docker-compose.kafka-app.yml up -d spark-job
 
+# Start the selected producer
+start_producer $PRODUCER_TYPE
+
 echo "All services started successfully."
+
+# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+# ./start-app.sh akka -> How to start bash-script with different producers #
+# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #

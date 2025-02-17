@@ -288,6 +288,38 @@ services:
     #       cpus: "1"
     #       memory: "2g"
 
+  # Kafka Client
+  kafka-client:
+    image: alexflames77/kafka-client:latest
+    container_name: kafka-client
+    ports:
+      - "9091:9091"
+    networks:
+      - kafka-net
+    depends_on:
+      - namenode
+      - kafka-1
+      - kafka-2
+    restart: on-failure
+    labels:
+      - "producer.type=kafka"
+
+  # Kafka Client
+  akka-client:
+    image: alexflames77/akka-client:latest
+    container_name: kafka-client
+    ports:
+      - "9091:9091"
+    networks:
+      - kafka-net
+    depends_on:
+      - namenode
+      - kafka-1
+      - kafka-2
+    restart: on-failure
+    labels:
+      - "producer.type=akka"
+
   # Prometheus
   prometheus:
     image: prom/prometheus
