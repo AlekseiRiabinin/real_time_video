@@ -4,6 +4,7 @@ import com.typesafe.config.ConfigFactory
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
 import org.apache.spark.ml.PipelineModel
+import org.apache.hadoop.fs.{FileSystem, Path}
 import com.transformers.CustomImageTransformer
 
 
@@ -27,9 +28,12 @@ object SparkMLJob {
 
     // Read HDFS configurations
     val processedPath = config.getString("spark.hdfs.processedPath")
+    val hdfsModelPath = config.getString("spark.hdfs.modelPath")
+    val localModelPath = config.getString("spark.local.modelPath")
 
-    // Read model path
-    val modelPath = config.getString("spark.model.path")
+    // Copy model from HDFS to local filesystem
+    val fs = FileSystem.get(spark.sparkContext.hadoopConfiguration)
+    fs.copyToLocalFile(new Path(hdfsModelPath), new Path(localModelPath))
 
     // Read video frames from Kafka
     val kafkaDF = spark.readStream
@@ -44,7 +48,6 @@ object SparkMLJob {
       .option("path", processedPath)
       .option("checkpointLocation", config.getString("spark.hdfs.checkpointLocation"))
       .start()
-      .awaitTermination()
 
     // Use the custom image transformer
     val imageTransformer = new CustomImageTransformer()
@@ -54,7 +57,7 @@ object SparkMLJob {
     val processedDF = imageTransformer.transform(kafkaDF)
 
     // Use a pre-trained model for inference
-    val model = PipelineModel.load(modelPath)
+    val model = PipelineModel.load(localModelPath)
     val predictions = model.transform(processedDF)
 
     // Write results back to Kafka

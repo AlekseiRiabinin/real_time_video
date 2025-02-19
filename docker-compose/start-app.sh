@@ -96,6 +96,11 @@ HDFS_SITE_PATH="$SPARK_CONF_DIR/hdfs-site.xml"
 # Producer type
 PRODUCER_TYPE=$1
 
+# HDFS params and ML model
+LOCAL_MODEL_PATH="/home/aleksei/Projects/real_time_video/apps/spark-app/models/saved_model"
+HDFS_MODEL_PATH="/models/saved_model"
+NAMENODE_CONTAINER="namenode"
+
 # Start all services
 echo "Starting HDFS services..."
 docker compose -f docker-compose.app.yml up -d namenode datanode
@@ -287,9 +292,58 @@ echo "Starting Spark Master and Worker..."
 docker compose -f docker-compose.app.yml up -d spark-master spark-worker
 echo "Spark Master and Worker are ready."
 
-# # Start Spark job
-# echo "Starting Spark job..."
-# docker compose -f docker-compose.kafka-app.yml up -d spark-job
+# Wait for Spark Master to be ready
+echo "Waiting for Spark Master to start..."
+max_retries=30
+retry_count=0
+while ! docker exec spark-master curl -s http://spark-master:8080 | grep -q "Spark Master"; do
+    echo "Spark Master is not ready yet. Waiting..."
+    sleep 5
+    retry_count=$((retry_count + 1))
+    if [ $retry_count -ge $max_retries ]; then
+        echo "Spark Master failed to start after $max_retries attempts. Exiting."
+        docker compose -f docker-compose.app.yml logs spark-master
+        exit 1
+    fi
+done
+echo "Spark Master is ready."
+
+# Start Spark job
+echo "Starting Spark job..."
+docker compose -f docker-compose.app.yml up -d spark-job
+
+# Wait for Spark job to start
+echo "Waiting for Spark job to start..."
+sleep 20
+
+# Check if Spark job is running
+echo "Checking if Spark job is running..."
+if docker compose -f docker-compose.app.yml logs spark-job | grep -q "ApplicationStateChanged"; then
+    echo "Spark job is running."
+else
+    echo "Error: Spark job failed to start. Check the logs for more information."
+    docker compose -f docker-compose.app.yml logs spark-job
+    exit 1
+fi
+
+# Copy the model to HDFS
+echo "Checking if the model is already in HDFS..."
+if docker exec -it $NAMENODE_CONTAINER hdfs dfs -test -e $HDFS_MODEL_PATH; then
+    echo "Model is already in HDFS. Skipping copy."
+else
+    echo "Model not found in HDFS. Copying the model to HDFS..."
+
+    # Create the /models directory in HDFS if it doesn't exist
+    docker exec -it $NAMENODE_CONTAINER hdfs dfs -mkdir -p /models
+
+    # Copy the model from the local directory to HDFS
+    if docker exec -it $NAMENODE_CONTAINER hdfs dfs -put $LOCAL_MODEL_PATH $HDFS_MODEL_PATH; then
+        echo "Model copied to HDFS successfully."
+    else
+        echo "Error: Failed to copy the model to HDFS."
+        exit 1
+    fi
+fi
 
 # Start the selected producer
 start_producer $PRODUCER_TYPE

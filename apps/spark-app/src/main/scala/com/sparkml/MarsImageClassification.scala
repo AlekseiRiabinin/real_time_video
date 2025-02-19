@@ -152,3 +152,10 @@ object MarsImageClassification {
     spark.stop()
   }
 }
+
+// sbt marsImageClassification/assembly
+
+// spark-submit \
+//   --class com.sparkml.MarsImageClassification \
+//   --master local[*] \
+//   apps/marsImageClassification/assembly/target/scala-2.12/mars-image-classification-assembly.jar

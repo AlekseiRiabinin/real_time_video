@@ -199,24 +199,6 @@ services:
     #       cpus: "1"
     #       memory: "2g"
 
-  # spark-job:
-  #   image: alexflames77/spark_job:latest
-  #   environment:
-  #     - SPARK_MASTER_URL=spark://spark-master:7077
-  #     - SPARK_APPLICATION_JAR_LOCATION=/opt/spark-apps/spark-ml-job.jar
-  #     - SPARK_APPLICATION_MAIN_CLASS=SparkMLJob
-  #   networks:
-  #     - kafka-net
-  #   restart: always
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         cpus: "1"
-  #         memory: "2g"
-  #   depends_on:
-  #     - kafka-1
-  #     - kafka-2
-
   # Spark Master
   spark-master:
     image: bitnami/spark:3.5.4
@@ -272,6 +254,7 @@ services:
     environment:
       - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_HADOOP_FS_DEFAULTFS=hdfs://namenode:8020
+      - MODEL_PATH=/opt/spark-apps/models/saved_model
     volumes:
       - ./models/saved_model:/opt/spark-apps/models/saved_model
     depends_on:
