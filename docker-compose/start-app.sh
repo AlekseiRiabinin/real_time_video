@@ -97,7 +97,7 @@ HDFS_SITE_PATH="$SPARK_CONF_DIR/hdfs-site.xml"
 PRODUCER_TYPE=$1
 
 # HDFS params and ML model
-LOCAL_MODEL_PATH="/home/aleksei/Projects/real_time_video/apps/spark-app/models/saved_model"
+LOCAL_MODEL_PATH="/home/aleksei/Projects/real_time_video/apps/spark-ml/models/saved_model"
 HDFS_MODEL_PATH="/models/saved_model"
 NAMENODE_CONTAINER="namenode"
 

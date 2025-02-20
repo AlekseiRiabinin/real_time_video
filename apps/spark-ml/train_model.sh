@@ -28,7 +28,7 @@ echo "Build successful. JAR file created at: $JAR_PATH"
 # Step 4: Run the Spark application
 echo "Running the Spark application..."
 spark-submit \
-  --class com.sparkml.MarsImageClassification \
+  --class MarsImageClassification \
   --master local[*] \
   --driver-memory 4G \
   "$JAR_PATH"

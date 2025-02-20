@@ -1,5 +1,3 @@
-package com.sparkml
-
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.{col, udf}
 import org.apache.spark.ml.linalg.Vectors
