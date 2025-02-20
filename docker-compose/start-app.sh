@@ -73,8 +73,62 @@ start_producer() {
         exit 1
       fi
       ;;
+    cats)
+      echo "Starting Cats Client..."
+      docker compose -f docker-compose.app.yml up -d cats-client
+
+      # Wait for Cats Client to be ready
+      echo "Waiting for Cats Client to start..."
+      sleep 10
+
+      # Check if Cats Client is running
+      echo "Checking if Cats Client is running..."
+      if docker ps | grep -q "cats-client"; then
+        echo "Cats Client is running."
+      else
+        echo "Error: Cats Client is not running. Check the logs for more information."
+        docker compose -f docker-compose.app.yml logs cats-client
+        exit 1
+      fi
+      ;;
+    fs2)
+      echo "Starting FS2 Client..."
+      docker compose -f docker-compose.app.yml up -d fs2-client
+
+      # Wait for FS2 Client to be ready
+      echo "Waiting for FS2 Client to start..."
+      sleep 10
+
+      # Check if FS2 Client is running
+      echo "Checking if FS2 Client is running..."
+      if docker ps | grep -q "fs2-client"; then
+        echo "FS2 Client is running."
+      else
+        echo "Error: FS2 Client is not running. Check the logs for more information."
+        docker compose -f docker-compose.app.yml logs fs2-client
+        exit 1
+      fi
+      ;;
+    zio)
+      echo "Starting ZIO Client..."
+      docker compose -f docker-compose.app.yml up -d zio-client
+
+      # Wait for ZIO Client to be ready
+      echo "Waiting for ZIO Client to start..."
+      sleep 10
+
+      # Check if ZIO Client is running
+      echo "Checking if ZIO Client is running..."
+      if docker ps | grep -q "zio-client"; then
+        echo "ZIO Client is running."
+      else
+        echo "Error: ZIO Client is not running. Check the logs for more information."
+        docker compose -f docker-compose.app.yml logs zio-client
+        exit 1
+      fi
+      ;;
     *)
-      echo "Invalid producer type. Use 'kafka' or 'akka'."
+      echo "Invalid producer type. Use 'kafka', 'akka', 'cats', 'fs2' or 'zio'."
       exit 1
       ;;
   esac
@@ -83,7 +137,7 @@ start_producer() {
 # Main script
 if [ $# -ne 1 ]; then
   echo "Usage: $0 <producer-type>"
-  echo "  <producer-type>: kafka | akka"
+  echo "  <producer-type>: kafka | akka | cats | fs2 | zio"
   exit 1
 fi
 

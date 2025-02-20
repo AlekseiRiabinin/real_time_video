@@ -287,7 +287,7 @@ services:
     labels:
       - "producer.type=kafka"
 
-  # Kafka Client
+  # Akka Client
   akka-client:
     image: alexflames77/akka-client:latest
     container_name: kafka-client
@@ -302,6 +302,54 @@ services:
     restart: on-failure
     labels:
       - "producer.type=akka"
+
+  # Cats Client
+  cats-client:
+    image: alexflames77/cats-client:latest
+    container_name: cats-client
+    ports:
+      - "9091:9091"
+    networks:
+      - kafka-net
+    depends_on:
+      - namenode
+      - kafka-1
+      - kafka-2
+    restart: on-failure
+    labels:
+      - "producer.type=cats"
+
+  # FS2 Client
+  fs2-client:
+    image: alexflames77/fs2-client:latest
+    container_name: fs2-client
+    ports:
+      - "9091:9091"
+    networks:
+      - kafka-net
+    depends_on:
+      - namenode
+      - kafka-1
+      - kafka-2
+    restart: on-failure
+    labels:
+      - "producer.type=fs2"
+
+  # ZIO Client
+  zio-client:
+    image: alexflames77/zio-client:latest
+    container_name: zio-client
+    ports:
+      - "9091:9091"
+    networks:
+      - kafka-net
+    depends_on:
+      - namenode
+      - kafka-1
+      - kafka-2
+    restart: on-failure
+    labels:
+      - "producer.type=zio"
 
   # Prometheus
   prometheus:

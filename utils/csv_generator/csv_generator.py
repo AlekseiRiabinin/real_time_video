@@ -16,16 +16,16 @@ def convert_txt_to_csv(txt_files, output_csv, image_base_path):
 
 # List of .txt files to convert
 txt_files = [
-    '/home/aleksei/Projects/real_time_video/apps/spark-app/train-calibrated-shuffled.txt',
-    '/home/aleksei/Projects/real_time_video/apps/spark-app/val-calibrated-shuffled.txt',
-    '/home/aleksei/Projects/real_time_video/apps/spark-app/test-calibrated-shuffled.txt'
+    '/home/aleksei/Projects/real_time_video/apps/spark-ml/train-calibrated-shuffled.txt',
+    '/home/aleksei/Projects/real_time_video/apps/spark-ml/val-calibrated-shuffled.txt',
+    '/home/aleksei/Projects/real_time_video/apps/spark-ml/test-calibrated-shuffled.txt'
 ]
 
 # Output CSV file
-output_csv = '/home/aleksei/Projects/real_time_video/apps/spark-app/mars_images.csv'
+output_csv = '/home/aleksei/Projects/real_time_video/apps/spark-ml/data/mars_images.csv'
 
 # Base path to the images
-image_base_path = '/home/aleksei/Projects/real_time_video/apps/spark-app/data/'
+image_base_path = '/home/aleksei/Projects/real_time_video/apps/spark-ml/data/'
 
 # Convert .txt files to CSV
 convert_txt_to_csv(txt_files, output_csv, image_base_path)
