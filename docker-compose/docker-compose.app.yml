@@ -290,7 +290,7 @@ services:
   # Akka Client
   akka-client:
     image: alexflames77/akka-client:latest
-    container_name: kafka-client
+    container_name: akka-client
     ports:
       - "9091:9091"
     networks:

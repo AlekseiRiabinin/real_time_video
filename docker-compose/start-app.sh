@@ -6,6 +6,7 @@ check_namenode_is_formatted() {
         echo "NameNode is not formatted."
         docker compose -f docker-compose.app.yml down
         echo Run bash-script format-hdfs.sh first!
+        exit 1  # Exit the script
     else
         echo "NameNode is already formatted."
     fi
@@ -17,6 +18,7 @@ check_cluster_id_mismatch() {
         echo "Detected cluster ID mismatch. Reformatting NameNode and clearing DataNode..."
         docker compose -f docker-compose.app.yml down
         echo Run bash-script format-hdfs.sh first!
+        exit 1  # Exit the script
     fi
 }
 
@@ -24,6 +26,10 @@ check_cluster_id_mismatch() {
 check_spark_file() {
     local container_name=$1
     local file_path=$2
+    if ! docker ps | grep -q "$container_name"; then
+        echo "Error: Container $container_name is not running."
+        return 1
+    fi
     if docker exec "$container_name" test -f "$file_path"; then
         echo "File $file_path exists in the Spark container."
         return 0
@@ -159,6 +165,10 @@ NAMENODE_CONTAINER="namenode"
 echo "Starting HDFS services..."
 docker compose -f docker-compose.app.yml up -d namenode datanode
 
+# +++++++++++++++++++++++++++++++++++++++++++++++ #
+# 1. Start HDFS services (namenode and datanode). #
+# +++++++++++++++++++++++++++++++++++++++++++++++ #
+
 # Check if NameNode is formatted
 check_namenode_is_formatted
 
@@ -212,6 +222,29 @@ else
     docker exec -it namenode hdfs dfs -ls /videos
 fi
 
+# Copy the model to HDFS
+echo "Checking if the model is already in HDFS..."
+if docker exec -it $NAMENODE_CONTAINER hdfs dfs -test -e $HDFS_MODEL_PATH; then
+    echo "Model is already in HDFS. Skipping copy."
+else
+    echo "Model not found in HDFS. Copying the model to HDFS..."
+
+    # Create the /models directory in HDFS if it doesn't exist
+    docker exec -it $NAMENODE_CONTAINER hdfs dfs -mkdir -p /models
+
+    # Copy the model from the local directory to HDFS
+    if docker exec -it $NAMENODE_CONTAINER hdfs dfs -put $LOCAL_MODEL_PATH $HDFS_MODEL_PATH; then
+        echo "Model copied to HDFS successfully."
+    else
+        echo "Error: Failed to copy the model to HDFS."
+        exit 1
+    fi
+fi
+
+# +++++++++++++++++++++++++++++++++++++++++++++ #
+# 2. Start Kafka brokers (kafka-1 and kafka-2). #
+# +++++++++++++++++++++++++++++++++++++++++++++ #
+
 # Start Kafka-brokers
 docker compose -f docker-compose.app.yml up -d kafka-1 kafka-2
 
@@ -232,10 +265,24 @@ done
 
 # Create Kafka topics (number of partitions corresponds to number of Kafka consumers)
 # kafka-service - 2 partitions, flink-job - 2 partitions
-echo "Creating Kafka topics..."
-docker exec -it kafka-1 kafka-topics.sh --create --topic __consumer_offsets --partitions 20 --replication-factor 2 --bootstrap-server kafka-1:9092,kafka-2:9095
-docker exec -it kafka-1 kafka-topics.sh --create --topic video-stream --partitions 4 --replication-factor 2 --bootstrap-server kafka-1:9092,kafka-2:9095
+# echo "Creating Kafka topics..."
+# docker exec -it kafka-1 kafka-topics.sh --create --topic __consumer_offsets --partitions 20 --replication-factor 2 --bootstrap-server kafka-1:9092,kafka-2:9095
+# docker exec -it kafka-1 kafka-topics.sh --create --topic video-stream --partitions 4 --replication-factor 2 --bootstrap-server kafka-1:9092,kafka-2:9095
 # docker exec -it kafka-1 kafka-topics.sh --create --topic anomaly-results --partitions 4 --replication-factor 2 --bootstrap-server kafka-1:9092,kafka-2:9095
+# Check if topics exist before creating them
+if ! docker exec -it kafka-1 kafka-topics.sh --describe --topic __consumer_offsets --bootstrap-server kafka-1:9092 >/dev/null 2>&1; then
+    echo "Creating Kafka topic __consumer_offsets..."
+    docker exec -it kafka-1 kafka-topics.sh --create --topic __consumer_offsets --partitions 20 --replication-factor 2 --bootstrap-server kafka-1:9092,kafka-2:9095
+fi
+
+if ! docker exec -it kafka-1 kafka-topics.sh --describe --topic video-stream --bootstrap-server kafka-1:9092 >/dev/null 2>&1; then
+    echo "Creating Kafka topic video-stream..."
+    docker exec -it kafka-1 kafka-topics.sh --create --topic video-stream --partitions 4 --replication-factor 2 --bootstrap-server kafka-1:9092,kafka-2:9095
+fi
+
+# +++++++++++++++++++++++++++++++++++++++ #
+# 3. Start Kafka service (kafka-service). #
+# +++++++++++++++++++++++++++++++++++++++ #
 
 # Start Kafka-service
 echo "Waiting for Kafka-service to start..."
@@ -245,9 +292,17 @@ docker compose -f docker-compose.app.yml up -d kafka-service
 echo "Waiting for Kafka service to start..."
 sleep 10
 
+# ++++++++++++++++++++++++++++++++ #
+# 4. Start Prometheus and Grafana. #
+# ++++++++++++++++++++++++++++++++ #
+
 # Start Prometheus and Grafana
 echo "Starting Prometheus and Grafana..."
 docker compose -f docker-compose.app.yml up -d prometheus grafana
+
+# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+# 5. Start Flink (jobmanager and taskmanager) and the Flink job (flink-job). #
+# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
 # Start Flink JobManager and TaskManager
 echo "Starting Flink JobManager and TaskManager..."
@@ -291,55 +346,9 @@ else
     exit 1
 fi
 
-# # Check if files already exist in the Spark container
-# if check_spark_file "$SPARK_CONTAINER" "$CORE_SITE_PATH" && check_spark_file "$SPARK_CONTAINER" "$HDFS_SITE_PATH"; then
-#     echo "HDFS configuration files are already present in the Spark container."
-# else
-#     echo "Copying HDFS configuration files to Spark container..."
-
-#     # Copy core-site.xml
-#     if ! docker cp namenode:/usr/local/hadoop/etc/hadoop/core-site.xml ./core-site.xml; then
-#         echo "Error: Failed to copy core-site.xml from namenode."
-#         exit 1
-#     else
-#         echo "Successfully copied core-site.xml from namenode."
-#     fi
-
-#     # Copy hdfs-site.xml
-#     if ! docker cp namenode:/usr/local/hadoop/etc/hadoop/hdfs-site.xml ./hdfs-site.xml; then
-#         echo "Error: Failed to copy hdfs-site.xml from namenode."
-#         exit 1
-#     else
-#         echo "Successfully copied hdfs-site.xml from namenode."
-#     fi
-
-#     # Verify files on the host
-#     if [ -f ./core-site.xml ] && [ -f ./hdfs-site.xml ]; then
-#         echo "HDFS configuration files successfully copied to the host."
-#     else
-#         echo "Error: HDFS configuration files were not copied to the host."
-#         exit 1
-#     fi
-
-#     # Copy files to Spark container
-#     if ! docker cp ./core-site.xml spark-job:/opt/spark/conf/core-site.xml; then
-#         echo "Error: Failed to copy core-site.xml to spark-job."
-#         exit 1
-#     else
-#         echo "Successfully copied core-site.xml to spark-job."
-#     fi
-
-#     if ! docker cp ./hdfs-site.xml spark-job:/opt/spark/conf/hdfs-site.xml; then
-#         echo "Error: Failed to copy hdfs-site.xml to spark-job."
-#         exit 1
-#     else
-#         echo "Successfully copied hdfs-site.xml to spark-job."
-#     fi
-
-#     # Clean up
-#     rm ./core-site.xml ./hdfs-site.xml
-#     echo "Temporary files removed."
-# fi
+# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+# 6. Start Spark services (spark-master, spark-worker, and spark-job). #
+# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
 # Start Spark Master and Worker
 echo "Starting Spark Master and Worker..."
@@ -380,24 +389,63 @@ else
     exit 1
 fi
 
-# Copy the model to HDFS
-echo "Checking if the model is already in HDFS..."
-if docker exec -it $NAMENODE_CONTAINER hdfs dfs -test -e $HDFS_MODEL_PATH; then
-    echo "Model is already in HDFS. Skipping copy."
+# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+# 7. Copy HDFS configuration files into the spark-job container. #
+# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# Check if files already exist in the Spark container
+if check_spark_file "$SPARK_CONTAINER" "$CORE_SITE_PATH" && check_spark_file "$SPARK_CONTAINER" "$HDFS_SITE_PATH"; then
+    echo "HDFS configuration files are already present in the Spark container."
 else
-    echo "Model not found in HDFS. Copying the model to HDFS..."
+    echo "Copying HDFS configuration files to Spark container..."
 
-    # Create the /models directory in HDFS if it doesn't exist
-    docker exec -it $NAMENODE_CONTAINER hdfs dfs -mkdir -p /models
-
-    # Copy the model from the local directory to HDFS
-    if docker exec -it $NAMENODE_CONTAINER hdfs dfs -put $LOCAL_MODEL_PATH $HDFS_MODEL_PATH; then
-        echo "Model copied to HDFS successfully."
+    # Copy core-site.xml
+    if ! docker cp namenode:/usr/local/hadoop/etc/hadoop/core-site.xml ./core-site.xml; then
+        echo "Error: Failed to copy core-site.xml from namenode."
+        exit 1
     else
-        echo "Error: Failed to copy the model to HDFS."
+        echo "Successfully copied core-site.xml from namenode."
+    fi
+
+    # Copy hdfs-site.xml
+    if ! docker cp namenode:/usr/local/hadoop/etc/hadoop/hdfs-site.xml ./hdfs-site.xml; then
+        echo "Error: Failed to copy hdfs-site.xml from namenode."
+        exit 1
+    else
+        echo "Successfully copied hdfs-site.xml from namenode."
+    fi
+
+    # Verify files on the host
+    if [ -f ./core-site.xml ] && [ -f ./hdfs-site.xml ]; then
+        echo "HDFS configuration files successfully copied to the host."
+    else
+        echo "Error: HDFS configuration files were not copied to the host."
         exit 1
     fi
+
+    # Copy files to Spark container
+    if ! docker cp ./core-site.xml spark-job:/opt/spark/conf/core-site.xml; then
+        echo "Error: Failed to copy core-site.xml to spark-job."
+        exit 1
+    else
+        echo "Successfully copied core-site.xml to spark-job."
+    fi
+
+    if ! docker cp ./hdfs-site.xml spark-job:/opt/spark/conf/hdfs-site.xml; then
+        echo "Error: Failed to copy hdfs-site.xml to spark-job."
+        exit 1
+    else
+        echo "Successfully copied hdfs-site.xml to spark-job."
+    fi
+
+    # Clean up
+    rm ./core-site.xml ./hdfs-site.xml
+    echo "Temporary files removed."
 fi
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+# 8. Start the selected producer (kafka-client, akka-client, etc.). #
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
 # Start the selected producer
 start_producer $PRODUCER_TYPE
