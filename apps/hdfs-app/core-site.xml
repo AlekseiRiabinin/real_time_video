@@ -11,7 +11,12 @@
     </property>
 
     <!-- <property>
-        <name>io.file.buffer.size</name>
-        <value>131072</value>
+        <name>hadoop.security.authentication</name>
+        <value>simple</value>  <!-- Disable Kerberos -->
+    </property>
+
+    <property>
+        <name>hadoop.security.authorization</name>
+        <value>false</value>   <!-- Disable authorization -->
     </property> -->
 </configuration>

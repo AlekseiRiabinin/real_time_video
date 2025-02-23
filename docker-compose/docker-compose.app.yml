@@ -256,7 +256,7 @@ services:
       - SPARK_HADOOP_FS_DEFAULTFS=hdfs://namenode:8020
       - MODEL_PATH=/opt/spark-apps/models/saved_model
     volumes:
-      - ./models/saved_model:/opt/spark-apps/models/saved_model
+      - ./ivy2:/opt/bitnami/spark/.ivy2
     depends_on:
       - spark-master
       - namenode

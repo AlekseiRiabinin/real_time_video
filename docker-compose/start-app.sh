@@ -1,24 +1,29 @@
 #!/bin/bash
 
+# Function to log messages
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
+}
+
 # Function to check if NameNode is formatted
 check_namenode_is_formatted() {
     if ! docker exec namenode ls /hadoop/dfs/name/current/VERSION >/dev/null 2>&1; then
-        echo "NameNode is not formatted."
-        docker compose -f docker-compose.app.yml down
-        echo Run bash-script format-hdfs.sh first!
-        exit 1  # Exit the script
+        log "NameNode is not formatted."
+        docker compose -f "$DOCKER_COMPOSE_FILE" down
+        log "Run bash-script format-hdfs.sh first!"
+        exit 1
     else
-        echo "NameNode is already formatted."
+        log "NameNode is already formatted."
     fi
 }
 
 # Function to check for cluster ID mismatch
 check_cluster_id_mismatch() {
-    if docker compose -f docker-compose.app.yml logs datanode | grep -q "Incompatible clusterIDs"; then
-        echo "Detected cluster ID mismatch. Reformatting NameNode and clearing DataNode..."
-        docker compose -f docker-compose.app.yml down
-        echo Run bash-script format-hdfs.sh first!
-        exit 1  # Exit the script
+    if docker compose -f "$DOCKER_COMPOSE_FILE" logs datanode | grep -q "Incompatible clusterIDs"; then
+        log "Detected cluster ID mismatch. Reformatting NameNode and clearing DataNode..."
+        docker compose -f "$DOCKER_COMPOSE_FILE" down
+        log "Run bash-script format-hdfs.sh first!"
+        exit 1
     fi
 }
 
@@ -27,124 +32,46 @@ check_spark_file() {
     local container_name=$1
     local file_path=$2
     if ! docker ps | grep -q "$container_name"; then
-        echo "Error: Container $container_name is not running."
+        log "Error: Container $container_name is not running."
         return 1
     fi
     if docker exec "$container_name" test -f "$file_path"; then
-        echo "File $file_path exists in the Spark container."
+        log "File $file_path exists in the Spark container."
         return 0
     else
-        echo "File $file_path does not exist in the Spark container."
+        log "File $file_path does not exist in the Spark container."
         return 1
     fi
 }
 
 # Function to start a specific producer
 start_producer() {
-  local producer_type=$1
-  case $producer_type in
-    kafka)
-      echo "Starting Kafka Client..."
-      docker compose -f docker-compose.app.yml up -d kafka-client
-
-      # Wait for Kafka Client to be ready
-      echo "Waiting for Kafka Client to start..."
-      sleep 10
-
-      # Check if Kafka Client is running
-      echo "Checking if Kafka Client is running..."
-      if docker ps | grep -q "kafka-client"; then
-        echo "Kafka Client is running."
-      else
-        echo "Error: Kafka Client is not running. Check the logs for more information."
-        docker compose -f docker-compose.app.yml logs kafka-client
-        exit 1
-      fi
-      ;;
-    akka)
-      echo "Starting Akka Client..."
-      docker compose -f docker-compose.app.yml up -d akka-client
-
-      # Wait for Akka Client to be ready
-      echo "Waiting for Akka Client to start..."
-      sleep 10
-
-      # Check if Akka Client is running
-      echo "Checking if Akka Client is running..."
-      if docker ps | grep -q "akka-client"; then
-        echo "Akka Client is running."
-      else
-        echo "Error: Akka Client is not running. Check the logs for more information."
-        docker compose -f docker-compose.app.yml logs akka-client
-        exit 1
-      fi
-      ;;
-    cats)
-      echo "Starting Cats Client..."
-      docker compose -f docker-compose.app.yml up -d cats-client
-
-      # Wait for Cats Client to be ready
-      echo "Waiting for Cats Client to start..."
-      sleep 10
-
-      # Check if Cats Client is running
-      echo "Checking if Cats Client is running..."
-      if docker ps | grep -q "cats-client"; then
-        echo "Cats Client is running."
-      else
-        echo "Error: Cats Client is not running. Check the logs for more information."
-        docker compose -f docker-compose.app.yml logs cats-client
-        exit 1
-      fi
-      ;;
-    fs2)
-      echo "Starting FS2 Client..."
-      docker compose -f docker-compose.app.yml up -d fs2-client
-
-      # Wait for FS2 Client to be ready
-      echo "Waiting for FS2 Client to start..."
-      sleep 10
-
-      # Check if FS2 Client is running
-      echo "Checking if FS2 Client is running..."
-      if docker ps | grep -q "fs2-client"; then
-        echo "FS2 Client is running."
-      else
-        echo "Error: FS2 Client is not running. Check the logs for more information."
-        docker compose -f docker-compose.app.yml logs fs2-client
-        exit 1
-      fi
-      ;;
-    zio)
-      echo "Starting ZIO Client..."
-      docker compose -f docker-compose.app.yml up -d zio-client
-
-      # Wait for ZIO Client to be ready
-      echo "Waiting for ZIO Client to start..."
-      sleep 10
-
-      # Check if ZIO Client is running
-      echo "Checking if ZIO Client is running..."
-      if docker ps | grep -q "zio-client"; then
-        echo "ZIO Client is running."
-      else
-        echo "Error: ZIO Client is not running. Check the logs for more information."
-        docker compose -f docker-compose.app.yml logs zio-client
-        exit 1
-      fi
-      ;;
-    *)
-      echo "Invalid producer type. Use 'kafka', 'akka', 'cats', 'fs2' or 'zio'."
-      exit 1
-      ;;
-  esac
+    local producer_type=$1
+    case $producer_type in
+        kafka|akka|cats|fs2|zio)
+            log "Starting $producer_type Client..."
+            docker compose -f "$DOCKER_COMPOSE_FILE" up -d "$producer_type-client"
+            sleep 10
+            if docker ps | grep -q "$producer_type-client"; then
+                log "$producer_type Client is running."
+            else
+                log "Error: $producer_type Client is not running. Check the logs for more information."
+                docker compose -f "$DOCKER_COMPOSE_FILE" logs "$producer_type-client"
+                exit 1
+            fi
+            ;;
+        *)
+            log "Invalid producer type. Use 'kafka', 'akka', 'cats', 'fs2', or 'zio'."
+            exit 1
+            ;;
+    esac
 }
 
 # Main script
 if [ $# -ne 1 ]; then
-  echo "Usage: $0 <producer-type>"
-  echo "  <producer-type>: kafka | akka | cats | fs2 | zio"
-  exit 1
+    log "Usage: $0 <producer-type>"
+    log "  <producer-type>: kafka | akka | cats | fs2 | zio"
+    exit 1
 fi
 
 # Spark container name and paths
@@ -153,92 +80,117 @@ SPARK_CONF_DIR="/opt/spark/conf"
 CORE_SITE_PATH="$SPARK_CONF_DIR/core-site.xml"
 HDFS_SITE_PATH="$SPARK_CONF_DIR/hdfs-site.xml"
 
-# Producer type
-PRODUCER_TYPE=$1
-
-# HDFS params and ML model
+# Paths and variables
+DOCKER_COMPOSE_FILE="/home/aleksei/Projects/real_time_video/docker-compose/docker-compose.app.yml"
 LOCAL_MODEL_PATH="/home/aleksei/Projects/real_time_video/apps/spark-ml/models/saved_model"
 HDFS_MODEL_PATH="/models/saved_model"
+PRODUCER_TYPE=$1
 NAMENODE_CONTAINER="namenode"
 
-# Start all services
-echo "Starting HDFS services..."
-docker compose -f docker-compose.app.yml up -d namenode datanode
+# Check if Docker Compose file exists
+if [ ! -f "$DOCKER_COMPOSE_FILE" ]; then
+    log "Error: Docker Compose file not found at $DOCKER_COMPOSE_FILE."
+    exit 1
+fi
+
+# Handling missing files
+if [ ! -f "/home/aleksei/Projects/real_time_video/apps/spark-app/target/scala-2.12/spark-job-fat.jar" ]; then
+    log "Error: Fat JAR not found. Build the Spark project first."
+    exit 1
+fi
+
+if [ ! -d "/home/aleksei/Projects/real_time_video/apps/spark-ml/models/saved_model" ]; then
+    log "Error: Model directory not found. Ensure the model is available."
+    exit 1
+fi
 
 # +++++++++++++++++++++++++++++++++++++++++++++++ #
 # 1. Start HDFS services (namenode and datanode). #
 # +++++++++++++++++++++++++++++++++++++++++++++++ #
 
-# Check if NameNode is formatted
-check_namenode_is_formatted
+# Start HDFS services
+log "Starting HDFS services..."
+docker compose -f "$DOCKER_COMPOSE_FILE" up -d namenode datanode
 
-# Check for cluster ID mismatch
+# Check NameNode and cluster ID
+check_namenode_is_formatted
 check_cluster_id_mismatch
 
 # Wait for HDFS to be ready
-echo "Waiting for HDFS to start..."
+log "Waiting for HDFS to start..."
 max_retries=30
 retry_count=0
 while ! docker exec namenode hdfs dfsadmin -report >/dev/null 2>&1; do
-    echo "HDFS is not ready yet. Waiting..."
+    log "HDFS is not ready yet. Waiting..."
     sleep 10
     retry_count=$((retry_count + 1))
     if [ $retry_count -ge $max_retries ]; then
-        echo "HDFS failed to start after $max_retries attempts. Exiting."
-        docker compose -f docker-compose.app.yml logs namenode datanode
+        log "HDFS failed to start after $max_retries attempts. Exiting."
+        docker compose -f "$DOCKER_COMPOSE_FILE" logs namenode datanode
         exit 1
     fi
 done
-echo "HDFS is ready."
+log "HDFS is ready."
 
 # Check if video.mp4 is already in HDFS
-echo "Checking if video.mp4 is already in HDFS..."
+log "Checking if video.mp4 is already in HDFS..."
 if docker exec namenode hdfs dfs -test -e /videos/video.mp4; then
-    echo "video.mp4 is already in HDFS. Skipping copy."
+    log "video.mp4 is already in HDFS. Skipping copy."
 else
     # Check if video.mp4 exists in the local directory
     if [ ! -f ./video.mp4 ]; then
-        echo "Error: video.mp4 not found in the local directory. Please ensure the file exists."
+        log "Error: video.mp4 not found in the local directory. Please ensure the file exists."
         exit 1
     fi
 
     # Copy video.mp4 to namenode container
-    echo "Copying video.mp4 to namenode container..."
+    log "Copying video.mp4 to namenode container..."
     if ! docker cp ./video.mp4 namenode:/tmp/video.mp4; then
-        echo "Error: Failed to copy video.mp4 to namenode container."
+        log "Error: Failed to copy video.mp4 to namenode container."
         exit 1
     fi
 
     # Create /videos directory in HDFS
-    echo "Creating /videos directory in HDFS..."
+    log "Creating /videos directory in HDFS..."
     docker exec -it namenode hdfs dfs -mkdir -p /videos
 
     # Upload video.mp4 to HDFS
-    echo "Uploading video.mp4 to HDFS..."
+    log "Uploading video.mp4 to HDFS..."
     docker exec -it namenode hdfs dfs -put /tmp/video.mp4 /videos/video.mp4
 
     # Verify the file is in HDFS
-    echo "Verifying video.mp4 in HDFS..."
+    log "Verifying video.mp4 in HDFS..."
     docker exec -it namenode hdfs dfs -ls /videos
 fi
 
 # Copy the model to HDFS
-echo "Checking if the model is already in HDFS..."
+log "Checking if the model is already in HDFS..."
 if docker exec -it $NAMENODE_CONTAINER hdfs dfs -test -e $HDFS_MODEL_PATH; then
-    echo "Model is already in HDFS. Skipping copy."
+    log "Model is already in HDFS. Skipping copy."
 else
-    echo "Model not found in HDFS. Copying the model to HDFS..."
+    log "Model not found in HDFS. Copying the model to HDFS..."
 
-    # Create the /models directory in HDFS if it doesn't exist
-    docker exec -it $NAMENODE_CONTAINER hdfs dfs -mkdir -p /models
-
-    # Copy the model from the local directory to HDFS
-    if docker exec -it $NAMENODE_CONTAINER hdfs dfs -put $LOCAL_MODEL_PATH $HDFS_MODEL_PATH; then
-        echo "Model copied to HDFS successfully."
+    # Copy the model to the namenode container's local filesystem
+    log "Copying the model to the namenode container..."
+    if ! docker cp /home/aleksei/Projects/real_time_video/apps/spark-ml/models/saved_model namenode:/tmp/saved_model; then
+        log "Error: Failed to copy the model to the namenode container."
+        exit 1
     else
-        echo "Error: Failed to copy the model to HDFS."
+        log "Model copied to the namenode container successfully."
+    fi
+
+    # Upload the model from the namenode container to HDFS
+    log "Uploading the model to HDFS..."
+    if docker exec -it namenode hdfs dfs -put /tmp/saved_model /models/saved_model; then
+        log "Model uploaded to HDFS successfully."
+    else
+        log "Error: Failed to upload the model to HDFS."
         exit 1
     fi
+
+    # Clean up the temporary files in the namenode container
+    log "Cleaning up temporary files in the namenode container..."
+    docker exec -it --user root namenode rm -rf /tmp/saved_model
 fi
 
 # +++++++++++++++++++++++++++++++++++++++++++++ #
@@ -246,20 +198,20 @@ fi
 # +++++++++++++++++++++++++++++++++++++++++++++ #
 
 # Start Kafka-brokers
-docker compose -f docker-compose.app.yml up -d kafka-1 kafka-2
+docker compose -f "$DOCKER_COMPOSE_FILE" up -d kafka-1 kafka-2
 
 # Wait for Kafka-brokers to be ready
-echo "Waiting for Kafka-brokers to start..."
+log "Waiting for Kafka-brokers to start..."
 sleep 10
 
 # Check if Kafka brokers are up
 while ! docker exec -it kafka-1 kafka-topics.sh --list --bootstrap-server kafka-1:9092; do
-    echo "Waiting for kafka-1 to be ready..."
+    log "Waiting for kafka-1 to be ready..."
     sleep 5
 done
 
 while ! docker exec -it kafka-2 kafka-topics.sh --list --bootstrap-server kafka-2:9095; do
-    echo "Waiting for kafka-2 to be ready..."
+    log "Waiting for kafka-2 to be ready..."
     sleep 5
 done
 
@@ -271,12 +223,12 @@ done
 # docker exec -it kafka-1 kafka-topics.sh --create --topic anomaly-results --partitions 4 --replication-factor 2 --bootstrap-server kafka-1:9092,kafka-2:9095
 # Check if topics exist before creating them
 if ! docker exec -it kafka-1 kafka-topics.sh --describe --topic __consumer_offsets --bootstrap-server kafka-1:9092 >/dev/null 2>&1; then
-    echo "Creating Kafka topic __consumer_offsets..."
+    log "Creating Kafka topic __consumer_offsets..."
     docker exec -it kafka-1 kafka-topics.sh --create --topic __consumer_offsets --partitions 20 --replication-factor 2 --bootstrap-server kafka-1:9092,kafka-2:9095
 fi
 
 if ! docker exec -it kafka-1 kafka-topics.sh --describe --topic video-stream --bootstrap-server kafka-1:9092 >/dev/null 2>&1; then
-    echo "Creating Kafka topic video-stream..."
+    log "Creating Kafka topic video-stream..."
     docker exec -it kafka-1 kafka-topics.sh --create --topic video-stream --partitions 4 --replication-factor 2 --bootstrap-server kafka-1:9092,kafka-2:9095
 fi
 
@@ -285,11 +237,11 @@ fi
 # +++++++++++++++++++++++++++++++++++++++ #
 
 # Start Kafka-service
-echo "Waiting for Kafka-service to start..."
-docker compose -f docker-compose.app.yml up -d kafka-service
+log "Waiting for Kafka-service to start..."
+docker compose -f "$DOCKER_COMPOSE_FILE" up -d kafka-service
 
 # Wait for Kafka service to be ready
-echo "Waiting for Kafka service to start..."
+log "Waiting for Kafka service to start..."
 sleep 10
 
 # ++++++++++++++++++++++++++++++++ #
@@ -297,52 +249,52 @@ sleep 10
 # ++++++++++++++++++++++++++++++++ #
 
 # Start Prometheus and Grafana
-echo "Starting Prometheus and Grafana..."
-docker compose -f docker-compose.app.yml up -d prometheus grafana
+log "Starting Prometheus and Grafana..."
+docker compose -f "$DOCKER_COMPOSE_FILE" up -d prometheus grafana
 
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 # 5. Start Flink (jobmanager and taskmanager) and the Flink job (flink-job). #
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
 # Start Flink JobManager and TaskManager
-echo "Starting Flink JobManager and TaskManager..."
-if ! docker compose -f docker-compose.app.yml up -d jobmanager taskmanager; then
-    echo "Error starting Flink services. Check the logs for more information."
-    docker compose -f docker-compose.app.yml logs jobmanager taskmanager
+log "Starting Flink JobManager and TaskManager..."
+if ! docker compose -f "$DOCKER_COMPOSE_FILE" up -d jobmanager taskmanager; then
+    log "Error starting Flink services. Check the logs for more information."
+    docker compose -f "$DOCKER_COMPOSE_FILE" logs jobmanager taskmanager
     exit 1
 fi
 
 # Wait for JobManager to be ready
-echo "Waiting for JobManager to be ready..."
+log "Waiting for JobManager to be ready..."
 max_retries=30
 retry_count=0
 while ! docker exec jobmanager curl -s http://jobmanager:8081 | grep -q "Flink Web Dashboard"; do
-    echo "JobManager is not ready yet. Waiting..."
+    log "JobManager is not ready yet. Waiting..."
     sleep 5
     retry_count=$((retry_count + 1))
     if [ $retry_count -ge $max_retries ]; then
-        echo "JobManager failed to start after $max_retries attempts. Exiting."
-        docker compose -f docker-compose.app.yml logs jobmanager
+        log "JobManager failed to start after $max_retries attempts. Exiting."
+        docker compose -f "$DOCKER_COMPOSE_FILE" logs jobmanager
         exit 1
     fi
 done
-echo "JobManager is ready."
+log "JobManager is ready."
 
 # Start Flink job
-echo "Starting Flink job..."
-docker compose -f docker-compose.app.yml up -d flink-job
+log "Starting Flink job..."
+docker compose -f "$DOCKER_COMPOSE_FILE" up -d flink-job
 
 # Wait for Flink job to start
-echo "Waiting for Flink job to start..."
+log "Waiting for Flink job to start..."
 sleep 60
 
 # Check if Flink job is running
-echo "Checking if Flink job is running..."
+log "Checking if Flink job is running..."
 if docker exec jobmanager flink list | grep -q "FlinkJob Kafka Consumer"; then
-    echo "Flink job 'FlinkJob Kafka Consumer' is running."
+    log "Flink job 'FlinkJob Kafka Consumer' is running."
 else
-    echo "Error: Flink job 'FlinkJob Kafka Consumer' is not running. Check the logs for more information."
-    docker compose -f docker-compose.app.yml logs flink-job
+    log "Error: Flink job 'FlinkJob Kafka Consumer' is not running. Check the logs for more information."
+    docker compose -f "$DOCKER_COMPOSE_FILE" logs flink-job
     exit 1
 fi
 
@@ -351,41 +303,41 @@ fi
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
 # Start Spark Master and Worker
-echo "Starting Spark Master and Worker..."
-docker compose -f docker-compose.app.yml up -d spark-master spark-worker
-echo "Spark Master and Worker are ready."
+log "Starting Spark Master and Worker..."
+docker compose -f "$DOCKER_COMPOSE_FILE" up -d spark-master spark-worker
+log "Spark Master and Worker are ready."
 
 # Wait for Spark Master to be ready
-echo "Waiting for Spark Master to start..."
-max_retries=30
+log "Waiting for Spark Master to start..."
+max_retries=10
 retry_count=0
-while ! docker exec spark-master curl -s http://spark-master:8080 | grep -q "Spark Master"; do
-    echo "Spark Master is not ready yet. Waiting..."
+while ! docker compose -f "$DOCKER_COMPOSE_FILE" logs spark-master | grep -q "Bound MasterWebUI to 0.0.0.0"; do
+    log "Spark Master is not ready yet. Waiting..."
     sleep 5
     retry_count=$((retry_count + 1))
     if [ $retry_count -ge $max_retries ]; then
-        echo "Spark Master failed to start after $max_retries attempts. Exiting."
-        docker compose -f docker-compose.app.yml logs spark-master
+        log "Spark Master failed to start after $max_retries attempts. Exiting."
+        docker compose -f "$DOCKER_COMPOSE_FILE" logs spark-master
         exit 1
     fi
 done
-echo "Spark Master is ready."
+log "Spark Master is ready."
 
 # Start Spark job
-echo "Starting Spark job..."
-docker compose -f docker-compose.app.yml up -d spark-job
+log "Starting Spark job..."
+docker compose -f "$DOCKER_COMPOSE_FILE" up -d spark-job
 
 # Wait for Spark job to start
-echo "Waiting for Spark job to start..."
+log "Waiting for Spark job to start..."
 sleep 20
 
 # Check if Spark job is running
-echo "Checking if Spark job is running..."
-if docker compose -f docker-compose.app.yml logs spark-job | grep -q "ApplicationStateChanged"; then
-    echo "Spark job is running."
+log "Checking if Spark job is running..."
+if docker compose -f "$DOCKER_COMPOSE_FILE" logs spark-job | grep -q "ApplicationStateChanged"; then
+    log "Spark job is running."
 else
-    echo "Error: Spark job failed to start. Check the logs for more information."
-    docker compose -f docker-compose.app.yml logs spark-job
+    log "Error: Spark job failed to start. Check the logs for more information."
+    docker compose -f "$DOCKER_COMPOSE_FILE" logs spark-job
     exit 1
 fi
 
@@ -395,52 +347,52 @@ fi
 
 # Check if files already exist in the Spark container
 if check_spark_file "$SPARK_CONTAINER" "$CORE_SITE_PATH" && check_spark_file "$SPARK_CONTAINER" "$HDFS_SITE_PATH"; then
-    echo "HDFS configuration files are already present in the Spark container."
+    log "HDFS configuration files are already present in the Spark container."
 else
-    echo "Copying HDFS configuration files to Spark container..."
+    log "Copying HDFS configuration files to Spark container..."
 
     # Copy core-site.xml
     if ! docker cp namenode:/usr/local/hadoop/etc/hadoop/core-site.xml ./core-site.xml; then
-        echo "Error: Failed to copy core-site.xml from namenode."
+        log "Error: Failed to copy core-site.xml from namenode."
         exit 1
     else
-        echo "Successfully copied core-site.xml from namenode."
+        log "Successfully copied core-site.xml from namenode."
     fi
 
     # Copy hdfs-site.xml
     if ! docker cp namenode:/usr/local/hadoop/etc/hadoop/hdfs-site.xml ./hdfs-site.xml; then
-        echo "Error: Failed to copy hdfs-site.xml from namenode."
+        log "Error: Failed to copy hdfs-site.xml from namenode."
         exit 1
     else
-        echo "Successfully copied hdfs-site.xml from namenode."
+        log "Successfully copied hdfs-site.xml from namenode."
     fi
 
     # Verify files on the host
     if [ -f ./core-site.xml ] && [ -f ./hdfs-site.xml ]; then
-        echo "HDFS configuration files successfully copied to the host."
+        log "HDFS configuration files successfully copied to the host."
     else
-        echo "Error: HDFS configuration files were not copied to the host."
+        log "Error: HDFS configuration files were not copied to the host."
         exit 1
     fi
 
     # Copy files to Spark container
     if ! docker cp ./core-site.xml spark-job:/opt/spark/conf/core-site.xml; then
-        echo "Error: Failed to copy core-site.xml to spark-job."
+        log "Error: Failed to copy core-site.xml to spark-job."
         exit 1
     else
-        echo "Successfully copied core-site.xml to spark-job."
+        log "Successfully copied core-site.xml to spark-job."
     fi
 
     if ! docker cp ./hdfs-site.xml spark-job:/opt/spark/conf/hdfs-site.xml; then
-        echo "Error: Failed to copy hdfs-site.xml to spark-job."
+        log "Error: Failed to copy hdfs-site.xml to spark-job."
         exit 1
     else
-        echo "Successfully copied hdfs-site.xml to spark-job."
+        log "Successfully copied hdfs-site.xml to spark-job."
     fi
 
     # Clean up
     rm ./core-site.xml ./hdfs-site.xml
-    echo "Temporary files removed."
+    log "Temporary files removed."
 fi
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
@@ -450,7 +402,7 @@ fi
 # Start the selected producer
 start_producer $PRODUCER_TYPE
 
-echo "All services started successfully."
+log "All services started successfully."
 
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 # ./start-app.sh akka -> How to start bash-script with different producers #
