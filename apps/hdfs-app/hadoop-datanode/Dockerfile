@@ -31,8 +31,10 @@ RUN useradd -m -s /bin/bash hadoop && \
 # Create necessary directories
 RUN mkdir -p /hadoop/dfs/data && \
     mkdir -p /tmp/hadoop && \
+    mkdir -p /var/lib/hadoop-hdfs && \
     chown -R hadoop:hadoop /hadoop && \
-    chown -R hadoop:hadoop /tmp
+    chown -R hadoop:hadoop /tmp && \
+    chown -R hadoop:hadoop /var/lib/hadoop-hdfs
 
 # Copy configuration files
 COPY ./core-site.xml $HADOOP_HOME/etc/hadoop/core-site.xml

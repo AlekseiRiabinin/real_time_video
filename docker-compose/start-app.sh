@@ -118,7 +118,7 @@ check_cluster_id_mismatch
 
 # Wait for HDFS to be ready
 log "Waiting for HDFS to start..."
-max_retries=30
+max_retries=10
 retry_count=0
 while ! docker exec namenode hdfs dfsadmin -report >/dev/null 2>&1; do
     log "HDFS is not ready yet. Waiting..."
@@ -298,8 +298,49 @@ else
     exit 1
 fi
 
+# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+# 6. Copy HDFS configuration files into the spark-job container. #
+# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# Copy HDFS configuration files to the host
+log "Copying HDFS configuration files to the host..."
+docker cp namenode:/usr/local/hadoop/etc/hadoop/core-site.xml ./core-site.xml
+docker cp namenode:/usr/local/hadoop/etc/hadoop/hdfs-site.xml ./hdfs-site.xml
+
+# Verify files on the host
+if [ -f ./core-site.xml ] && [ -f ./hdfs-site.xml ]; then
+    log "HDFS configuration files successfully copied to the host."
+else
+    log "Error: HDFS configuration files were not copied to the host."
+    exit 1
+fi
+
+# Copy HDFS configuration files to Spark container
+if docker cp ./core-site.xml spark-job:/opt/spark/conf/core-site.xml; then
+    log "core-site.xml is copied."
+else
+    log "Error: core-site.xml was not copied to Spark container."
+    exit 1
+fi
+if docker cp ./hdfs-site.xml spark-job:/opt/spark/conf/hdfs-site.xml; then
+    log "hdfs-site.xml is copied."
+else
+    log "Error: hdfs-site.xml was not copied to Spark container."
+    exit 1
+fi
+
+# Clean up
+rm ./core-site.xml ./hdfs-site.xml
+log "Temporary files removed."
+
+# Verify configuration files before starting the Spark Job
+if ! docker exec spark-job test -f /opt/spark/conf/core-site.xml || ! docker exec spark-job test -f /opt/spark/conf/hdfs-site.xml; then
+    log "Error: HDFS configuration files are missing in the Spark container."
+    exit 1
+fi
+
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
-# 6. Start Spark services (spark-master, spark-worker, and spark-job). #
+# 7. Start Spark services (spark-master, spark-worker, and spark-job). #
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
 # Start Spark Master and Worker
@@ -339,60 +380,6 @@ else
     log "Error: Spark job failed to start. Check the logs for more information."
     docker compose -f "$DOCKER_COMPOSE_FILE" logs spark-job
     exit 1
-fi
-
-# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
-# 7. Copy HDFS configuration files into the spark-job container. #
-# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
-
-# Check if files already exist in the Spark container
-if check_spark_file "$SPARK_CONTAINER" "$CORE_SITE_PATH" && check_spark_file "$SPARK_CONTAINER" "$HDFS_SITE_PATH"; then
-    log "HDFS configuration files are already present in the Spark container."
-else
-    log "Copying HDFS configuration files to Spark container..."
-
-    # Copy core-site.xml
-    if ! docker cp namenode:/usr/local/hadoop/etc/hadoop/core-site.xml ./core-site.xml; then
-        log "Error: Failed to copy core-site.xml from namenode."
-        exit 1
-    else
-        log "Successfully copied core-site.xml from namenode."
-    fi
-
-    # Copy hdfs-site.xml
-    if ! docker cp namenode:/usr/local/hadoop/etc/hadoop/hdfs-site.xml ./hdfs-site.xml; then
-        log "Error: Failed to copy hdfs-site.xml from namenode."
-        exit 1
-    else
-        log "Successfully copied hdfs-site.xml from namenode."
-    fi
-
-    # Verify files on the host
-    if [ -f ./core-site.xml ] && [ -f ./hdfs-site.xml ]; then
-        log "HDFS configuration files successfully copied to the host."
-    else
-        log "Error: HDFS configuration files were not copied to the host."
-        exit 1
-    fi
-
-    # Copy files to Spark container
-    if ! docker cp ./core-site.xml spark-job:/opt/spark/conf/core-site.xml; then
-        log "Error: Failed to copy core-site.xml to spark-job."
-        exit 1
-    else
-        log "Successfully copied core-site.xml to spark-job."
-    fi
-
-    if ! docker cp ./hdfs-site.xml spark-job:/opt/spark/conf/hdfs-site.xml; then
-        log "Error: Failed to copy hdfs-site.xml to spark-job."
-        exit 1
-    else
-        log "Successfully copied hdfs-site.xml to spark-job."
-    fi
-
-    # Clean up
-    rm ./core-site.xml ./hdfs-site.xml
-    log "Temporary files removed."
 fi
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #

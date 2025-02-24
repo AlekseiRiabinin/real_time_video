@@ -33,6 +33,13 @@ object SparkMLJob {
       .getOrCreate()
     logger.info("Spark session initialized successfully")
 
+    // Explicitly set Hadoop configuration
+    val hadoopConf = spark.sparkContext.hadoopConfiguration
+    hadoopConf.set("fs.defaultFS", config.getString("spark.hdfs.defaultFS"))
+    hadoopConf.set("hadoop.security.authentication", config.getString("spark.hdfs.authentication"))
+    hadoopConf.set("hadoop.security.authorization", config.getString("spark.hdfs.authorization"))
+    logger.info("Hadoop configuration set explicitly")
+
     // Read Kafka configurations
     val kafkaBootstrapServers = config.getString("spark.kafka.bootstrapServers")
     val inputTopic = config.getString("spark.kafka.inputTopic")
@@ -55,11 +62,18 @@ object SparkMLJob {
         |localModelPath=$localModelPath""".stripMargin
     )
 
-    // Copy model from HDFS to local filesystem
-    val fs = FileSystem.get(spark.sparkContext.hadoopConfiguration)
-    logger.info("HDFS FileSystem initialized successfully")
-    fs.copyToLocalFile(new Path(hdfsModelPath), new Path(localModelPath))
-    logger.info(s"Model copied from HDFS ($hdfsModelPath) to local filesystem ($localModelPath)")
+    // Initialize HDFS FileSystem
+    logger.info("Initializing HDFS FileSystem...")
+    try {
+      val fs = FileSystem.get(hadoopConf)
+      logger.info("HDFS FileSystem initialized successfully")
+
+      // Copy model from HDFS to local filesystem
+      fs.copyToLocalFile(new Path(hdfsModelPath), new Path(localModelPath))
+      logger.info(s"Model copied from HDFS ($hdfsModelPath) to local filesystem ($localModelPath)")
+    } catch {
+      case e: Exception => logger.error("Failed to initialize HDFS FileSystem or copy model", e)
+    }
 
     // Read video frames from Kafka
     val kafkaDF = spark.readStream
@@ -104,6 +118,13 @@ object SparkMLJob {
     query.awaitTermination()
   }
 }
+
+// Increasing the memory  
+// export SBT_OPTS="-Xmx8G -XX:+UseG1GC"
+
+// docker build -t alexflames77/spark_job:latest .
+// docker push alexflames77/spark_job:latest
+
 
 // spark-submit --class com.sparkml.SparkMLJob \
 // --master local[*] target/scala-2.12/SparkMLJob-assembly-0.1.0-SNAPSHOT.jar

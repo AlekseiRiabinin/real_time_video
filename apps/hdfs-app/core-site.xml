@@ -10,7 +10,7 @@
         <value>/tmp/hadoop</value>
     </property>
 
-    <!-- <property>
+    <property>
         <name>hadoop.security.authentication</name>
         <value>simple</value>  <!-- Disable Kerberos -->
     </property>
@@ -18,5 +18,5 @@
     <property>
         <name>hadoop.security.authorization</name>
         <value>false</value>   <!-- Disable authorization -->
-    </property> -->
+    </property>
 </configuration>
