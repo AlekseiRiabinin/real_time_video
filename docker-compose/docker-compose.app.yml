@@ -11,19 +11,14 @@ services:
       - CORE_CONF_hadoop_proxyuser_hue_hosts=*
       - CORE_CONF_hadoop_proxyuser_hue_groups=*
       - HDFS_CONF_dfs_replication=1
-      - HDFS_CONF_dfs_namenode_name_dir=/hadoop/dfs/name
       - HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check=false
       - HDFS_CONF_dfs_webhdfs_enabled=true
       - HDFS_CONF_dfs_permissions_enabled=false
-    # env_file:
-    #   - ./hadoop.env
     command: ["hdfs", "namenode"]
     user: "hadoop"
     volumes:
       - namenode-data:/hadoop/dfs/name
-      - hadoop-logs:/usr/local/hadoop/logs
-      # - ./hdfs-site.xml:/etc/hadoop/conf/hdfs-site.xml:ro
-      # - ./core-site.xml:/usr/local/hadoop/etc/hadoop/core-site.xml:ro
+      - namenode-logs:/usr/local/hadoop/logs
     ports:
       - "50070:50070"  # NameNode web UI
       - "8020:8020"    # HDFS port
@@ -44,17 +39,12 @@ services:
     environment:
       - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
       - HDFS_CONF_dfs_datanode_data_dir=/hadoop/dfs/data
-      - HDFS_CONF_dfs_replication=1
       - HDFS_CONF_dfs_permissions_enabled=false
-    # env_file:
-    #   - ./hadoop.env
     command: ["hdfs", "datanode"]
     user: "hadoop"
     volumes:
       - datanode-data:/hadoop/dfs/data
-      - hadoop-logs:/usr/local/hadoop/logs
-      # - ./hdfs-site.xml:/etc/hadoop/conf/hdfs-site.xml:ro
-      # - ./core-site.xml:/usr/local/hadoop/etc/hadoop/core-site.xml:ro
+      - datanode-logs:/usr/local/hadoop/logs
     ports:
       - "50075:50075"  # DataNode web UI
       - "1004:1004"    # DataNode auxiliary port
@@ -157,11 +147,6 @@ services:
     container_name: taskmanager
     hostname: taskmanager
     command: taskmanager
-    environment:
-      - |
-        FLINK_PROPERTIES=
-        jobmanager.rpc.address: jobmanager
-        taskmanager.registration.timeout: 5 min
     networks:
       - kafka-net
     restart: always
@@ -175,7 +160,7 @@ services:
     environment:
       - FLINK_JOBMANAGER_HOST=jobmanager
       - FLINK_JOBMANAGER_PORT=8081
-      - KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
+      # - KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
     command: >
       /bin/bash -c "
       java 
@@ -232,8 +217,6 @@ services:
       - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_WORKER_MEMORY=1G
       - SPARK_WORKER_CORES=1
-      - SPARK_RPC_AUTHENTICATION_ENABLED=no
-      - SPARK_RPC_ENCRYPTION_ENABLED=no
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
       - SPARK_SSL_ENABLED=no
     depends_on:
@@ -253,8 +236,16 @@ services:
     container_name: spark-job
     environment:
       - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_HADOOP_FS_DEFAULTFS=hdfs://namenode:8020
+      - SPARK_HADOOP_FS_DEFAULTFS=hdfs://namenode:8020    
       - MODEL_PATH=/opt/spark-apps/models/saved_model
+      - HADOOP_CONF_DIR=/opt/bitnami/spark/conf
+      - SPARK_HDFS_AUTHENTICATION=simple
+      - SPARK_HDFS_AUTHORIZATION=false
+      - SPARK_EXECUTOR_MEMORY=1g
+      - SPARK_DRIVER_MEMORY=1g
+      - SPARK_EXECUTOR_CORES=1
+      - SPARK_DRIVER_CORES=1
+      - SPARK_SQL_STREAMING_CHECKPOINTLOCATION=/videos/checkpoint      
     volumes:
       - ./ivy2:/opt/bitnami/spark/.ivy2
     depends_on:
@@ -265,6 +256,19 @@ services:
     networks:
       - kafka-net
     restart: on-failure
+    command: >
+      /opt/bitnami/spark/bin/spark-submit
+      --master ${SPARK_MASTER_URL}
+      --conf spark.hadoop.fs.defaultFS=${SPARK_HADOOP_FS_DEFAULTFS}
+      --conf spark.hadoop.hadoop.security.authentication=${SPARK_HDFS_AUTHENTICATION}
+      --conf spark.hadoop.hadoop.security.authorization=${SPARK_HDFS_AUTHORIZATION}
+      --conf spark.executor.memory=${SPARK_EXECUTOR_MEMORY}
+      --conf spark.driver.memory=${SPARK_DRIVER_MEMORY}
+      --conf spark.executor.cores=${SPARK_EXECUTOR_CORES}
+      --conf spark.driver.cores=${SPARK_DRIVER_CORES}
+      --conf spark.sql.streaming.checkpointLocation=${SPARK_SQL_STREAMING_CHECKPOINTLOCATION}
+      --class com.sparkml.SparkMLJob
+      /opt/spark-app/spark-job-fat.jar    
     # deploy:
     #   resources:
     #     limits:
@@ -273,7 +277,7 @@ services:
 
   # Kafka Client
   kafka-client:
-    image: alexflames77/kafka-client:latest
+    image: alexflames77/kafka_client:latest
     container_name: kafka-client
     ports:
       - "9091:9091"
@@ -289,7 +293,7 @@ services:
 
   # Akka Client
   akka-client:
-    image: alexflames77/akka-client:latest
+    image: alexflames77/akka_client:latest
     container_name: akka-client
     ports:
       - "9091:9091"
@@ -305,7 +309,7 @@ services:
 
   # Cats Client
   cats-client:
-    image: alexflames77/cats-client:latest
+    image: alexflames77/cats_client:latest
     container_name: cats-client
     ports:
       - "9091:9091"
@@ -321,7 +325,7 @@ services:
 
   # FS2 Client
   fs2-client:
-    image: alexflames77/fs2-client:latest
+    image: alexflames77/fs2_client:latest
     container_name: fs2-client
     ports:
       - "9091:9091"
@@ -337,7 +341,7 @@ services:
 
   # ZIO Client
   zio-client:
-    image: alexflames77/zio-client:latest
+    image: alexflames77/zio_client:latest
     container_name: zio-client
     ports:
       - "9091:9091"
@@ -397,8 +401,10 @@ volumes:
     name: namenode-data
   datanode-data:
     name: datanode-data
-  hadoop-logs:
-    name: hadoop-logs
+  namenode-logs:
+    name: namenode-logs
+  datanode-logs:
+    name: datanode-logs
   grafana-storage:
     name: grafana-storage
   prometheus-data:

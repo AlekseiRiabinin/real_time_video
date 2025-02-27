@@ -2,7 +2,11 @@ import org.apache.flink.api.common.serialization.{SerializationSchema, Deseriali
 import org.apache.flink.api.common.typeinfo.{TypeInformation, Types}
 import org.apache.flink.streaming.api.scala._
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
-import org.apache.flink.streaming.connectors.kafka.{FlinkKafkaConsumer, FlinkKafkaProducer}
+import org.apache.flink.streaming.connectors.kafka.{
+  FlinkKafkaConsumer,
+  FlinkKafkaProducer,
+  KafkaSerializationSchema
+}
 import org.apache.flink.api.common.ExecutionMode
 import org.apache.flink.configuration.{Configuration, RestOptions, RestartStrategyOptions}
 import java.util.Properties
@@ -12,13 +16,13 @@ import org.bytedeco.javacv.{Java2DFrameConverter, OpenCVFrameConverter}
 import org.bytedeco.opencv.global.opencv_core._
 import org.bytedeco.opencv.global.opencv_imgproc._
 import org.bytedeco.opencv.opencv_core._
+import org.apache.kafka.clients.producer.ProducerRecord
 
 
-class ByteArraySchema extends DeserializationSchema[Array[Byte]] with SerializationSchema[Array[Byte]] {
-  override def deserialize(message: Array[Byte]): Array[Byte] = message
-  override def isEndOfStream(nextElement: Array[Byte]): Boolean = false
-  override def serialize(element: Array[Byte]): Array[Byte] = element
-  override def getProducedType: TypeInformation[Array[Byte]] = TypeInformation.of(classOf[Array[Byte]])
+class ByteArraySchema extends KafkaSerializationSchema[Array[Byte]] {
+  override def serialize(element: Array[Byte], timestamp: java.lang.Long): ProducerRecord[Array[Byte], Array[Byte]] = {
+    new ProducerRecord[Array[Byte], Array[Byte]]("processed-data", null, element)
+  }
 }
 
 object FlinkJob {
@@ -40,59 +44,46 @@ object FlinkJob {
     // Create the Kafka consumer
     val kafkaConsumer = new FlinkKafkaConsumer[Array[Byte]](
       "video-stream",
-      new ByteArraySchema(),
+      new DeserializationSchema[Array[Byte]] {
+        override def deserialize(message: Array[Byte]): Array[Byte] = message
+        override def isEndOfStream(nextElement: Array[Byte]): Boolean = false
+        override def getProducedType: TypeInformation[Array[Byte]] = TypeInformation.of(classOf[Array[Byte]])
+      },
       properties
     )
 
     // Add the Kafka consumer as a source to the Flink job
     val stream = env.addSource(kafkaConsumer)
 
-    // Process the stream (for now, just print the size of the consumed messages)
-    stream.map(bytes => s"Received message of size: ${bytes.length} bytes").print()
+    // Process the stream for image resizing
+    val processedStream = stream.map { bytes =>
+      // Convert byte array to OpenCV Mat
+      val mat = new Mat(new Size(256, 256), CV_8UC3) // Assuming the input image is 256x256
+      mat.data().put(bytes: _*)
 
-    // ---------------------------------------------------------------- 
+      // Resize the image to 64x64
+      val resized = new Mat()
+      resize(mat, resized, new Size(64, 64))
 
-    // // Add the Kafka consumer as a source to the Flink job
-    // val stream = env.addSource(kafkaConsumer)
+      // Convert the resized Mat back to byte array
+      val resizedBytes = new Array[Byte](resized.total().toInt * resized.elemSize().toInt)
+      resized.data().get(resizedBytes)
 
-    // // Process the stream for anomaly detection
-    // val processedStream = stream.map { bytes =>
-    //   // Convert byte array to OpenCV Mat
-    //   val mat = new Mat(bytes.length, 1, CV_8UC1)
-    //   mat.data().put(bytes)
+      resizedBytes
+    }
 
-    //   // Convert Mat to BufferedImage
-    //   val converter = new Java2DFrameConverter()
-    //   val frameConverter = new OpenCVFrameConverter.ToMat()
-    //   val frame = frameConverter.convert(mat)
-    //   val bufferedImage = converter.convert(frame)
+    // Create the Kafka producer
+    val kafkaProducer = new FlinkKafkaProducer[Array[Byte]](
+      "processed-data",
+      new ByteArraySchema(),
+      properties,
+      FlinkKafkaProducer.Semantic.EXACTLY_ONCE
+    )
 
-    //   // Perform anomaly detection (example: detect edges)
-    //   val gray = new Mat()
-    //   cvtColor(mat, gray, COLOR_BGR2GRAY)
-    //   val edges = new Mat()
-    //   Canny(gray, edges, 50, 150)
-
-    //   // Convert processed Mat back to byte array
-    //   val processedBytes = new Array[Byte](edges.total().toInt * edges.elemSize().toInt)
-    //   edges.data().get(processedBytes)
-
-    //   processedBytes
-    // }
-
-    // val kafkaProducer = new FlinkKafkaProducer[Array[Byte]](
-    //   "output-topic",
-    //   new ByteArraySchema(),
-    //   properties,
-    //   FlinkKafkaProducer.Semantic.EXACTLY_ONCE
-    // )
-
-    // // Add the Kafka producer as a sink to the Flink job
-    // processedStream.addSink(kafkaProducer)
-
-    // ----------------------------------------------------------------
+    // Add the Kafka producer as a sink to the Flink job
+    processedStream.addSink(kafkaProducer)
 
     // Execute the Flink job
-    env.execute("FlinkJob Kafka Consumer")
+    env.execute("FlinkJob Kafka Consumer with Image Resizing")
   }
 }

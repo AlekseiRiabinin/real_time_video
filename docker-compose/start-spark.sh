@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Load environment variables
+if [ -f .env ]; then
+  export $(cat .env | xargs)
+fi
+
 # Spark container name and paths
 SPARK_CONTAINER="spark-job"
 SPARK_CONF_DIR="/opt/bitnami/spark/conf"
@@ -33,18 +38,18 @@ while ! docker exec namenode hdfs dfsadmin -report >/dev/null 2>&1; do
 done
 echo "HDFS is ready."
 
-# Copy HDFS configuration files to the host
-echo "Copying HDFS configuration files to the host..."
-docker cp namenode:/usr/local/hadoop/etc/hadoop/core-site.xml ./core-site.xml
-docker cp namenode:/usr/local/hadoop/etc/hadoop/hdfs-site.xml ./hdfs-site.xml
+# # Copy HDFS configuration files to the host
+# echo "Copying HDFS configuration files to the host..."
+# docker cp namenode:/usr/local/hadoop/etc/hadoop/core-site.xml ./core-site.xml
+# docker cp namenode:/usr/local/hadoop/etc/hadoop/hdfs-site.xml ./hdfs-site.xml
 
-# Verify files on the host
-if [ -f ./core-site.xml ] && [ -f ./hdfs-site.xml ]; then
-    echo "HDFS configuration files successfully copied to the host."
-else
-    echo "Error: HDFS configuration files were not copied to the host."
-    exit 1
-fi
+# # Verify files on the host
+# if [ -f ./core-site.xml ] && [ -f ./hdfs-site.xml ]; then
+#     echo "HDFS configuration files successfully copied to the host."
+# else
+#     echo "Error: HDFS configuration files were not copied to the host."
+#     exit 1
+# fi
 
 # Start Spark Master and Worker
 echo "Starting Spark Master and Worker..."
@@ -75,29 +80,29 @@ docker compose -f "$DOCKER_COMPOSE_FILE" up -d spark-job
 echo "Waiting for Spark job container to start..."
 sleep 10
 
-# Copy HDFS configuration files to Spark container
-if docker cp ./core-site.xml spark-job:/opt/bitnami/spark/conf/core-site.xml; then
-    echo "core-site.xml is copied."
-else
-    echo "Error: core-site.xml was not copied to Spark container."
-    exit 1
-fi
-if docker cp ./hdfs-site.xml spark-job:/opt/bitnami/spark/conf/hdfs-site.xml; then
-    echo "hdfs-site.xml is copied."
-else
-    echo "Error: hdfs-site.xml was not copied to Spark container."
-    exit 1
-fi
+# # Copy HDFS configuration files to Spark container
+# if docker cp ./core-site.xml spark-job:/opt/bitnami/spark/conf/core-site.xml; then
+#     echo "core-site.xml is copied."
+# else
+#     echo "Error: core-site.xml was not copied to Spark container."
+#     exit 1
+# fi
+# if docker cp ./hdfs-site.xml spark-job:/opt/bitnami/spark/conf/hdfs-site.xml; then
+#     echo "hdfs-site.xml is copied."
+# else
+#     echo "Error: hdfs-site.xml was not copied to Spark container."
+#     exit 1
+# fi
 
-# Clean up
-rm ./core-site.xml ./hdfs-site.xml
-echo "Temporary files removed."
+# # Clean up
+# rm ./core-site.xml ./hdfs-site.xml
+# echo "Temporary files removed."
 
-# Verify configuration files before starting the Spark Job
-if ! docker exec spark-job test -f /opt/bitnami/spark/conf/core-site.xml || ! docker exec spark-job test -f /opt/bitnami/spark/conf/hdfs-site.xml; then
-    echo "Error: HDFS configuration files are missing in the Spark container."
-    exit 1
-fi
+# # Verify configuration files before starting the Spark Job
+# if ! docker exec spark-job test -f /opt/bitnami/spark/conf/core-site.xml || ! docker exec spark-job test -f /opt/bitnami/spark/conf/hdfs-site.xml; then
+#     echo "Error: HDFS configuration files are missing in the Spark container."
+#     exit 1
+# fi
 
 # Start the Spark job (if needed)
 echo "Starting Spark job..."

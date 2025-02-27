@@ -24,20 +24,34 @@ object SparkMLJob {
     // Initialize Spark session
     val spark = SparkSession.builder
       .appName(config.getString("spark.appName"))
-      .master(config.getString("spark.master"))
-      .config("spark.hadoop.fs.defaultFS", config.getString("spark.hdfs.defaultFS"))
-      .config("spark.sql.streaming.checkpointLocation", config.getString("spark.hdfs.checkpointLocation"))
-      .config("spark.jars.ivy", config.getString("spark.ivy"))
-      .config("spark.logConf", config.getString("spark.logs.logConf"))
-      .config("spark.logLevel", config.getString("spark.logs.logLevel"))
+      // Use environment variable if set, otherwise use application.conf
+      .master(sys.env.getOrElse("SPARK_MASTER_URL", config.getString("spark.master")))
+      // Other configurations will be read from spark-defaults.conf
       .getOrCreate()
     logger.info("Spark session initialized successfully")
 
     // Explicitly set Hadoop configuration
     val hadoopConf = spark.sparkContext.hadoopConfiguration
-    hadoopConf.set("fs.defaultFS", config.getString("spark.hdfs.defaultFS"))
-    hadoopConf.set("hadoop.security.authentication", config.getString("spark.hdfs.authentication"))
-    hadoopConf.set("hadoop.security.authorization", config.getString("spark.hdfs.authorization"))
+    // Use environment variable if set, otherwise use application.conf
+    val hdfsDefaultFS = sys.env.getOrElse("SPARK_HADOOP_FS_DEFAULTFS", config.getString("spark.hdfs.defaultFS"))
+    hadoopConf.set("fs.defaultFS", hdfsDefaultFS)
+    
+    // Set Hadoop security authentication with a fallback value
+    val hdfsAuthentication = if (config.hasPath("spark.hdfs.authentication")) {
+      config.getString("spark.hdfs.authentication")
+    } else {
+      "simple" // Fallback value
+    }
+    hadoopConf.set("hadoop.security.authentication", hdfsAuthentication)
+
+    // Set Hadoop security authorization with a fallback value
+    val hdfsAuthorization = if (config.hasPath("spark.hdfs.authorization")) {
+      config.getString("spark.hdfs.authorization")
+    } else {
+      "false" // Fallback value
+    }
+    hadoopConf.set("hadoop.security.authorization", hdfsAuthorization)
+
     logger.info("Hadoop configuration set explicitly")
 
     // Read Kafka configurations
@@ -46,20 +60,21 @@ object SparkMLJob {
     val outputTopic = config.getString("spark.kafka.outputTopic")
     logger.info(
       s"""Kafka configurations:
-        |bootstrapServers=$kafkaBootstrapServers,
-        |inputTopic=$inputTopic,
-        |outputTopic=$outputTopic""".stripMargin
+         |bootstrapServers=$kafkaBootstrapServers,
+         |inputTopic=$inputTopic,
+         |outputTopic=$outputTopic""".stripMargin
     )
 
     // Read HDFS configurations
     val processedPath = config.getString("spark.hdfs.processedPath")
     val hdfsModelPath = config.getString("spark.hdfs.modelPath")
-    val localModelPath = config.getString("spark.local.modelPath")
+    // Use environment variable if set, otherwise use application.conf
+    val localModelPath = sys.env.getOrElse("MODEL_PATH", config.getString("spark.local.modelPath"))
     logger.info(
       s"""HDFS configurations:
-        |processedPath=$processedPath,
-        |hdfsModelPath=$hdfsModelPath,
-        |localModelPath=$localModelPath""".stripMargin
+         |processedPath=$processedPath,
+         |hdfsModelPath=$hdfsModelPath,
+         |localModelPath=$localModelPath""".stripMargin
     )
 
     // Initialize HDFS FileSystem
@@ -118,23 +133,3 @@ object SparkMLJob {
     query.awaitTermination()
   }
 }
-
-// Increasing the memory  
-// export SBT_OPTS="-Xmx8G -XX:+UseG1GC"
-
-// docker build -t alexflames77/spark_job:latest .
-// docker push alexflames77/spark_job:latest
-
-
-// spark-submit --class com.sparkml.SparkMLJob \
-// --master local[*] target/scala-2.12/SparkMLJob-assembly-0.1.0-SNAPSHOT.jar
-
-// docker run -it --rm \
-//   -v $(pwd)/target/scala-2.12/SparkMLJob-assembly-0.1.0-SNAPSHOT.jar:/opt/spark-app/spark-job.jar \
-//   -v $(pwd)/models/saved_model:/opt/spark-apps/models/saved_model \
-//   -e SPARK_MASTER_URL=local[*] \
-//   -e SPARK_HADOOP_FS_DEFAULTFS=hdfs://172.18.0.2:8020 \  # Use the IP address of namenode
-//   -e MODEL_PATH=/opt/spark-apps/models/saved_model \
-//   -e IVY_HOME=/opt/bitnami/spark/.ivy2 \
-//   bitnami/spark:3.5.4 \
-//   /opt/bitnami/spark/bin/spark-submit --class com.sparkml.SparkMLJob /opt/spark-app/spark-job.jar

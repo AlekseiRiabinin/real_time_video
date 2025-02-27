@@ -98,17 +98,6 @@ if [ ! -f "$DOCKER_COMPOSE_FILE" ]; then
     exit 1
 fi
 
-# Handling missing files
-if [ ! -f "/home/aleksei/Projects/real_time_video/apps/spark-app/target/scala-2.12/spark-job-fat.jar" ]; then
-    log "Error: Fat JAR not found. Build the Spark project first."
-    exit 1
-fi
-
-if [ ! -d "/home/aleksei/Projects/real_time_video/apps/spark-ml/models/saved_model" ]; then
-    log "Error: Model directory not found. Ensure the model is available."
-    exit 1
-fi
-
 # +++++++++++++++++++++++++++++++++++++++++++++++ #
 # 1. Start HDFS services (namenode and datanode). #
 # +++++++++++++++++++++++++++++++++++++++++++++++ #
@@ -302,49 +291,6 @@ else
     exit 1
 fi
 
-# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
-# 6. Start Spark services (spark-master, spark-worker, and spark-job). #
-# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
-
-# Start Spark Master and Worker
-log "Starting Spark Master and Worker..."
-docker compose -f "$DOCKER_COMPOSE_FILE" up -d spark-master spark-worker
-log "Spark Master and Worker are ready."
-
-# Wait for Spark Master to be ready
-log "Waiting for Spark Master to start..."
-max_retries=10
-retry_count=0
-while ! docker compose -f "$DOCKER_COMPOSE_FILE" logs spark-master | grep -q "Bound MasterWebUI to 0.0.0.0"; do
-    log "Spark Master is not ready yet. Waiting..."
-    sleep 5
-    retry_count=$((retry_count + 1))
-    if [ $retry_count -ge $max_retries ]; then
-        log "Spark Master failed to start after $max_retries attempts. Exiting."
-        docker compose -f "$DOCKER_COMPOSE_FILE" logs spark-master
-        exit 1
-    fi
-done
-log "Spark Master is ready."
-
-# Start Spark job
-log "Starting Spark job..."
-docker compose -f "$DOCKER_COMPOSE_FILE" up -d spark-job
-
-# Wait for Spark job to start
-log "Waiting for Spark job to start..."
-sleep 20
-
-# Check if Spark job is running
-log "Checking if Spark job is running..."
-if docker compose -f "$DOCKER_COMPOSE_FILE" logs spark-job | grep -q "ApplicationStateChanged"; then
-    log "Spark job is running."
-else
-    log "Error: Spark job failed to start. Check the logs for more information."
-    docker compose -f "$DOCKER_COMPOSE_FILE" logs spark-job
-    exit 1
-fi
-
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 # 7. Start the selected producer (kafka-client, akka-client, etc.). #
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
@@ -353,7 +299,3 @@ fi
 start_producer $PRODUCER_TYPE
 
 log "All services started successfully."
-
-# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
-# ./start-app.sh akka -> How to start bash-script with different producers #
-# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
