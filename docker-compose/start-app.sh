@@ -48,23 +48,75 @@ check_spark_file() {
 start_producer() {
     local producer_type=$1
     case $producer_type in
-        kafka|akka|cats|fs2|zio)
-            log "Starting $producer_type Client..."
+        kafka)
+            log "Starting Kafka Client..."
+            check_port_availability 9080  # Check if port 9080 is available
             docker compose -f "$DOCKER_COMPOSE_FILE" up -d "$producer_type-client"
-            sleep 10
-            if docker ps | grep -q "$producer_type-client"; then
-                log "$producer_type Client is running."
-            else
-                log "Error: $producer_type Client is not running. Check the logs for more information."
-                docker compose -f "$DOCKER_COMPOSE_FILE" logs "$producer_type-client"
-                exit 1
-            fi
+            ;;
+        akka)
+            log "Starting Akka Client..."
+            check_port_availability 9081  # Check if port 9081 is available
+            docker compose -f "$DOCKER_COMPOSE_FILE" up -d "$producer_type-client"
+            ;;
+        cats)
+            log "Starting Cats Client..."
+            check_port_availability 9082  # Check if port 9082 is available
+            docker compose -f "$DOCKER_COMPOSE_FILE" up -d "$producer_type-client"
+            ;;
+        fs2)
+            log "Starting FS2 Client..."
+            check_port_availability 9083  # Check if port 9083 is available
+            docker compose -f "$DOCKER_COMPOSE_FILE" up -d "$producer_type-client"
+            ;;
+        zio)
+            log "Starting ZIO Client..."
+            check_port_availability 9084  # Check if port 9084 is available
+            docker compose -f "$DOCKER_COMPOSE_FILE" up -d "$producer_type-client"
             ;;
         *)
             log "Invalid producer type. Use 'kafka', 'akka', 'cats', 'fs2', or 'zio'."
             exit 1
             ;;
     esac
+
+    sleep 10
+    if docker ps | grep -q "$producer_type-client"; then
+        log "$producer_type Client is running."
+    else
+        log "Error: $producer_type Client is not running. Check the logs for more information."
+        docker compose -f "$DOCKER_COMPOSE_FILE" logs "$producer_type-client"
+        exit 1
+    fi
+}
+
+# Function to wait for Kafka brokers to be ready
+wait_for_kafka_brokers() {
+    local max_retries=30
+    local retry_count=0
+
+    log "Waiting for Kafka brokers to be ready..."
+    while ! docker exec -it kafka-1 kafka-topics.sh --list --bootstrap-server kafka-1:9092 >/dev/null 2>&1; do
+        log "Kafka brokers are not ready yet. Waiting..."
+        sleep 10
+        retry_count=$((retry_count + 1))
+        if [ $retry_count -ge $max_retries ]; then
+            log "Error: Kafka brokers failed to start after $max_retries attempts. Exiting."
+            docker compose -f "$DOCKER_COMPOSE_FILE" logs kafka-1 kafka-2
+            exit 1
+        fi
+    done
+    log "Kafka brokers are ready."
+}
+
+# Check if port is available 
+check_port_availability() {
+    local port=$1
+    if netstat -tuln | grep -q ":$port "; then
+        log "Port $port is already in use."
+        exit 1
+    else
+        log "Port $port is available."
+    fi
 }
 
 # Load environment variables
@@ -204,6 +256,9 @@ fi
 
 # Start Kafka-brokers
 docker compose -f "$DOCKER_COMPOSE_FILE" up -d kafka-1 kafka-2
+
+# Wait for Kafka brokers to be ready
+wait_for_kafka_brokers
 
 # Wait for Kafka-brokers to be ready
 log "Waiting for Kafka-brokers to start..."

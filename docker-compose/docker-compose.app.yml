@@ -280,7 +280,7 @@ services:
     image: alexflames77/kafka_client:latest
     container_name: kafka-client
     ports:
-      - "9091:9091"
+      - "9080:9080"
     networks:
       - kafka-net
     depends_on:
@@ -296,7 +296,7 @@ services:
     image: alexflames77/akka_client:latest
     container_name: akka-client
     ports:
-      - "9091:9091"
+      - "9081:9081"
     networks:
       - kafka-net
     depends_on:
@@ -312,7 +312,7 @@ services:
     image: alexflames77/cats_client:latest
     container_name: cats-client
     ports:
-      - "9091:9091"
+      - "9082:9082"
     networks:
       - kafka-net
     depends_on:
@@ -328,7 +328,7 @@ services:
     image: alexflames77/fs2_client:latest
     container_name: fs2-client
     ports:
-      - "9091:9091"
+      - "9083:9083"
     networks:
       - kafka-net
     depends_on:
@@ -344,7 +344,7 @@ services:
     image: alexflames77/zio_client:latest
     container_name: zio-client
     ports:
-      - "9091:9091"
+      - "9084:9084"
     networks:
       - kafka-net
     depends_on:

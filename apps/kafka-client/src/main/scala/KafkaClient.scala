@@ -73,8 +73,8 @@ object KafkaClient {
 
     // Initialize Prometheus default metrics and start HTTP server
     DefaultExports.initialize()
-    val prometheusServer = new HTTPServer(9091)
-    println("Prometheus HTTP server started on port 9091")
+    val prometheusServer = new HTTPServer(9080)
+    println("Prometheus HTTP server started on port 9080")
 
     try {
       // Open an InputStream to read the video file directly from HDFS

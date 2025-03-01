@@ -2,7 +2,23 @@ global:
   scrape_interval: 5s
 
 scrape_configs:
-  - job_name: "kafka_service"
-
+  - job_name: 'kafka-client'
     static_configs:
-      - targets: ["kafka-service:9091"]
+      - targets: ['kafka-client:9080']  # Scrape metrics from kafka-client
+
+  - job_name: 'akka-client'
+    static_configs:
+      - targets: ['akka-client:9081']  # Scrape metrics from akka-client
+
+  - job_name: 'cats-client'
+    static_configs:
+      - targets: ['cats-client:9082']  # Scrape metrics from cats-client
+
+  - job_name: 'fs2-client'
+    static_configs:
+      - targets: ['fs2-client:9083']  # Scrape metrics from fs2-client
+
+  - job_name: 'zio-client'
+    static_configs:
+      - targets: ['zio-client:9084']  # Scrape metrics from zio-client
+
