@@ -281,15 +281,13 @@ services:
     container_name: kafka-client
     environment:
       - BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
-      - HDFS_NAMENODE_URL=hdfs://namenode:8020
-      - HADOOP_CONF_DIR=/etc/hadoop
-      - HADOOP_HOME=/opt/hadoop
-    volumes:
-      - ./hadoop-config/core-site.xml:/etc/hadoop/core-site.xml:ro
-      - ./hadoop-config/hdfs-site.xml:/etc/hadoop/hdfs-site.xml:ro
-      - ./hadoop-config:/etc/hadoop:ro
-      # - /home/aleksei/Projects/real_time_video/apps/hdfs-app/hadoop-libs:/opt/hadoop/share/hadoop/common/lib:ro
-      # - /home/aleksei/Projects/real_time_video/apps/hdfs-app/hadoop-libs:/opt/hadoop/share/hadoop/hdfs:ro
+      - HDFS_URI=hdfs://namenode:8020
+    # volumes:
+    #   - ./hadoop-config/core-site.xml:/etc/hadoop/core-site.xml:ro
+    #   - ./hadoop-config/hdfs-site.xml:/etc/hadoop/hdfs-site.xml:ro
+    #   - ./hadoop-config:/etc/hadoop:ro
+    #   - /home/aleksei/Projects/real_time_video/apps/hdfs-app/hadoop-libs:/opt/hadoop/share/hadoop/common/lib:ro
+    #   - /home/aleksei/Projects/real_time_video/apps/hdfs-app/hadoop-libs:/opt/hadoop/share/hadoop/hdfs:ro
     ports:
       - "9080:9080"
     networks:
