@@ -277,52 +277,6 @@ sleep 10
 log "Starting Prometheus and Grafana..."
 docker compose -f "$DOCKER_COMPOSE_FILE" up -d prometheus grafana
 
-# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
-# 5. Start Flink (jobmanager and taskmanager) and the Flink job (flink-job). #
-# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
-
-# Start Flink JobManager and TaskManager
-log "Starting Flink JobManager and TaskManager..."
-if ! docker compose -f "$DOCKER_COMPOSE_FILE" up -d jobmanager taskmanager; then
-    log "Error starting Flink services. Check the logs for more information."
-    docker compose -f "$DOCKER_COMPOSE_FILE" logs jobmanager taskmanager
-    exit 1
-fi
-
-# Wait for JobManager to be ready
-log "Waiting for JobManager to be ready..."
-max_retries=30
-retry_count=0
-while ! docker exec jobmanager curl -s http://jobmanager:8081 | grep -q "Flink Web Dashboard"; do
-    log "JobManager is not ready yet. Waiting..."
-    sleep 5
-    retry_count=$((retry_count + 1))
-    if [ $retry_count -ge $max_retries ]; then
-        log "JobManager failed to start after $max_retries attempts. Exiting."
-        docker compose -f "$DOCKER_COMPOSE_FILE" logs jobmanager
-        exit 1
-    fi
-done
-log "JobManager is ready."
-
-# Start Flink job
-log "Starting Flink job..."
-docker compose -f "$DOCKER_COMPOSE_FILE" up -d flink-job
-
-# Wait for Flink job to start
-log "Waiting for Flink job to start..."
-sleep 60
-
-# Check if Flink job is running
-log "Checking if Flink job is running..."
-if docker exec jobmanager flink list | grep -q "FlinkJob Kafka Consumer"; then
-    log "Flink job 'FlinkJob Kafka Consumer' is running."
-else
-    log "Error: Flink job 'FlinkJob Kafka Consumer' is not running. Check the logs for more information."
-    docker compose -f "$DOCKER_COMPOSE_FILE" logs flink-job
-    exit 1
-fi
-
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 # 7. Start the selected producer (kafka-client, akka-client, etc.). #
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #

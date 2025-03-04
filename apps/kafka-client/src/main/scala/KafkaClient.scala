@@ -102,10 +102,6 @@ object KafkaClient {
     kafkaProps.put("bootstrap.servers", appConfig.kafka.bootstrapServers)
     kafkaProps.put("key.serializer", classOf[ByteArraySerializer].getName)
     kafkaProps.put("value.serializer", classOf[ByteArraySerializer].getName)
-    // kafkaProps.put("acks", "all") // Ensure all replicas acknowledge writes
-    // kafkaProps.put("retries", "3") // Retry failed sends
-    // kafkaProps.put("linger.ms", "10") // Wait up to 10ms for batching
-    // kafkaProps.put("compression.type", "snappy") // Compress messages
     val kafkaProducer = new KafkaProducer[Array[Byte], Array[Byte]](kafkaProps)
 
     // Initialize Prometheus default metrics and start HTTP server
@@ -113,71 +109,73 @@ object KafkaClient {
     val prometheusServer = new HTTPServer(9080)
     logger.info("Prometheus HTTP server started on port 9080")
 
-    try {
-      // Open an InputStream to read the video file directly from HDFS
-      val hdfsInputStream = fs.open(new Path(appConfig.hdfs.videoPath))
-      logger.info(s"Video file opened from HDFS: ${appConfig.hdfs.videoPath}")
-
-      // Initialize frame grabber with the HDFS InputStream
-      val grabber = new FFmpegFrameGrabber(hdfsInputStream)
-      grabber.setImageWidth(appConfig.video.frameWidth)
-      grabber.setImageHeight(appConfig.video.frameHeight)
-      grabber.setFrameRate(appConfig.video.frameRate)
-      grabber.start()
-
-      val converter = new Java2DFrameConverter()
-
-      // Process each frame and send it to Kafka
-      var frame = grabber.grab()
-      while (frame != null) {
-        val startTime = System.nanoTime()
-
-        try {
-          val bufferedImage = converter.convert(frame)
-          if (bufferedImage == null) {
-            throw new Exception("Failed to convert frame to BufferedImage")
-          }
-          val byteArray = new Array[Byte](bufferedImage.getWidth * bufferedImage.getHeight * 3)
-          val raster = bufferedImage.getRaster
-          raster.getDataElements(0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray)
-
-          // Update Prometheus metrics
-          framesProduced.inc()
-          frameSize.set(byteArray.length)
-          frameProductionTime.observe((System.nanoTime() - startTime) / 1e9)
-
-          // Send the frame to Kafka
-          val record = new ProducerRecord[Array[Byte], Array[Byte]](appConfig.kafka.topic, byteArray)
-          kafkaProducer.send(record, new Callback {
-            override def onCompletion(metadata: RecordMetadata, exception: Exception): Unit = {
-              if (exception != null) {
-                kafkaProducerErrors.inc()
-                logger.error(s"Failed to send frame to Kafka: ${exception.getMessage}")
-              } else {
-                logger.debug("Frame sent to Kafka")
-              }
-            }
-          })
-        } catch {
-          case ex: Exception =>
-            frameProductionErrors.inc()
-            logger.error(s"Error processing frame: ${ex.getMessage}")
-        }
-
-        frame = grabber.grab()
+    // Continuously process the same video file in a loop
+    while (true) {
+      try {
+        processVideoFile(fs, new Path(appConfig.hdfs.videoPath), kafkaProducer, appConfig)
+        logger.info("Finished processing video file. Restarting...")
+      } catch {
+        case ex: Exception =>
+          logger.error(s"Error processing video file: ${ex.getMessage}")
+          Thread.sleep(5000) // Wait before retrying
       }
-
-      logger.info("End of video file reached")
-    } catch {
-      case ex: Exception =>
-        frameProductionErrors.inc()
-        logger.error(s"Error processing video: ${ex.getMessage}")
-    } finally {
-      // Close resources
-      if (fs != null) fs.close()
-      kafkaProducer.close()
-      prometheusServer.stop()
-      logger.info("Application shutdown complete")
     }
+  }
+
+  /** Processes a single video file and sends its frames to Kafka. */
+  private def processVideoFile(
+    fs: FileSystem,
+    videoPath: Path,
+    kafkaProducer: KafkaProducer[Array[Byte], Array[Byte]],
+    appConfig: AppConfig
+  ): Unit = {
+    logger.info(s"Processing video file: ${videoPath.getName}")
+    val hdfsInputStream = fs.open(videoPath)
+    val grabber = new FFmpegFrameGrabber(hdfsInputStream)
+    grabber.setImageWidth(appConfig.video.frameWidth)
+    grabber.setImageHeight(appConfig.video.frameHeight)
+    grabber.setFrameRate(appConfig.video.frameRate)
+    grabber.start()
+
+    val converter = new Java2DFrameConverter()
+    var frame = grabber.grab()
+    while (frame != null) {
+      val startTime = System.nanoTime()
+      try {
+        val bufferedImage = converter.convert(frame)
+        if (bufferedImage == null) {
+          throw new Exception("Failed to convert frame to BufferedImage")
+        }
+        val byteArray = new Array[Byte](bufferedImage.getWidth * bufferedImage.getHeight * 3)
+        val raster = bufferedImage.getRaster
+        raster.getDataElements(0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray)
+
+        // Update Prometheus metrics
+        framesProduced.inc()
+        frameSize.set(byteArray.length)
+        frameProductionTime.observe((System.nanoTime() - startTime) / 1e9)
+
+        // Send the frame to Kafka
+        val record = new ProducerRecord[Array[Byte], Array[Byte]](appConfig.kafka.topic, byteArray)
+        kafkaProducer.send(record, new Callback {
+          override def onCompletion(metadata: RecordMetadata, exception: Exception): Unit = {
+            if (exception != null) {
+              kafkaProducerErrors.inc()
+              logger.error(s"Failed to send frame to Kafka: ${exception.getMessage}")
+            } else {
+              logger.debug("Frame sent to Kafka")
+            }
+          }
+        })
+      } catch {
+        case ex: Exception =>
+          frameProductionErrors.inc()
+          logger.error(s"Error processing frame: ${ex.getMessage}")
+      }
+      frame = grabber.grab()
+    }
+    grabber.stop()
+    hdfsInputStream.close()
+    logger.info(s"Finished processing video file: ${videoPath.getName}")
   }
 }
