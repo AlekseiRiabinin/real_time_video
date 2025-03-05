@@ -1,3 +1,4 @@
+import scala.concurrent.duration._
 import cats.effect.{IO, IOApp, Resource}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord}
 import org.apache.kafka.common.serialization.ByteArraySerializer
@@ -23,15 +24,44 @@ object CatsClient extends IOApp.Simple {
   // Load configuration from application.conf
   val config = ConfigFactory.load()
   val appConfig = AppConfig(
-    HdfsConfig(config.getString("hdfs.uri"), config.getString("hdfs.video-path")),
-    KafkaConfig(config.getString("kafka.bootstrap-servers"), config.getString("kafka.topic")),
-    VideoConfig(config.getInt("video.frame-width"), config.getInt("video.frame-height"), config.getInt("video.frame-rate"))
+    HdfsConfig(
+      uri = config.getString("hdfs.uri"),
+      videoPath = config.getString("hdfs.video-path")
+    ),
+    KafkaConfig(
+      bootstrapServers = config.getString("kafka.bootstrap-servers"),
+      topic = config.getString("kafka.topic")
+    ),
+    VideoConfig(
+      frameWidth = config.getInt("video.frame-width"),
+      frameHeight = config.getInt("video.frame-height"),
+      frameRate = config.getInt("video.frame-rate")
+    )
   )
+
+  // Validate configuration
+  require(appConfig.hdfs.uri.nonEmpty, "HDFS URI must not be empty")
+  require(appConfig.kafka.bootstrapServers.nonEmpty, "Kafka bootstrap servers must not be empty")
+  require(appConfig.video.frameWidth > 0, "Frame width must be positive")
+  require(appConfig.video.frameHeight > 0, "Frame height must be positive")
+  require(appConfig.video.frameRate > 0, "Frame rate must be positive")
 
   // HDFS configuration
   val conf = new Configuration()
   conf.set("fs.defaultFS", appConfig.hdfs.uri)
-  val fs = FileSystem.get(new URI(appConfig.hdfs.uri), conf)
+  conf.addResource(new Path("/etc/hadoop/core-site.xml"))
+  conf.addResource(new Path("/etc/hadoop/hdfs-site.xml"))
+
+  // Initialize HDFS FileSystem
+  val fs: FileSystem = try {
+    FileSystem.get(new URI(appConfig.hdfs.uri), conf)
+  } catch {
+    case ex: Exception =>
+      println(s"Failed to connect to HDFS: ${ex.getMessage}")
+      hdfsReadErrors.inc()
+      System.exit(1) // Exit the program if HDFS connection fails
+      throw ex // This line is unreachable but required for type safety
+  }
 
   // Kafka Producer Properties
   val kafkaProps: Properties = new Properties()
@@ -60,6 +90,16 @@ object CatsClient extends IOApp.Simple {
     .help("Size of each frame in bytes")
     .register()
 
+  val kafkaProducerErrors: Counter = Counter.build()
+    .name("kafka_producer_errors_total")
+    .help("Total number of Kafka producer errors")
+    .register()
+
+  val hdfsReadErrors: Counter = Counter.build()
+    .name("hdfs_read_errors_total")
+    .help("Total number of HDFS read errors")
+    .register()
+
   // Resource for Kafka Producer
   def kafkaProducerResource: Resource[IO, KafkaProducer[Array[Byte], Array[Byte]]] =
     Resource.make(IO(new KafkaProducer[Array[Byte], Array[Byte]](kafkaProps)))(producer => IO(producer.close()))
@@ -83,40 +123,55 @@ object CatsClient extends IOApp.Simple {
         var frame = grabber.grab()
         while (frame != null) {
           val startTime = System.nanoTime()
-          val bufferedImage = converter.convert(frame)
-          val byteArray = new Array[Byte](bufferedImage.getWidth * bufferedImage.getHeight * 3)
-          val raster = bufferedImage.getRaster
-          raster.getDataElements(0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray)
+          try {
+            val bufferedImage = converter.convert(frame)
+            val byteArray = new Array[Byte](bufferedImage.getWidth * bufferedImage.getHeight * 3)
+            val raster = bufferedImage.getRaster
+            raster.getDataElements(0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray)
 
-          // Update Prometheus metrics
-          framesProduced.inc()
-          frameSize.set(byteArray.length)
-          frameProductionTime.observe((System.nanoTime() - startTime) / 1e9)
+            // Update Prometheus metrics
+            framesProduced.inc()
+            frameSize.set(byteArray.length)
+            frameProductionTime.observe((System.nanoTime() - startTime) / 1e9)
 
-          // Send the frame to Kafka
-          val record = new ProducerRecord[Array[Byte], Array[Byte]](appConfig.kafka.topic, byteArray)
-          producer.send(record).get() // Blocking call, but wrapped in IO.blocking
-          println("Frame sent to Kafka")
-
+            // Send the frame to Kafka
+            val record = new ProducerRecord[Array[Byte], Array[Byte]](appConfig.kafka.topic, byteArray)
+            producer.send(record).get() // Blocking call, but wrapped in IO.blocking
+            println("Frame sent to Kafka")
+          } catch {
+            case ex: Exception =>
+              frameProductionErrors.inc()
+              println(s"Error processing frame: ${ex.getMessage}")
+          }
           frame = grabber.grab()
         }
 
         println("End of video file reached")
       }.handleErrorWith { ex =>
         frameProductionErrors.inc()
-        IO(println(s"Error processing video: ${ex.getMessage}"))
+        IO.println(s"Error processing video: ${ex.getMessage}")
       }
     }
   }
 
-  // Main entry point
+  // Main entry point with continuous loop
   override def run: IO[Unit] = {
     for {
       _ <- IO(DefaultExports.initialize()) // Initialize Prometheus default metrics
-      _ <- IO(new HTTPServer(9091)) // Start Prometheus HTTP server
-      _ <- IO(println("Prometheus HTTP server started on port 9091"))
+      _ <- IO(new HTTPServer(9082)) // Start Prometheus HTTP server
+      _ <- IO.println("Prometheus HTTP server started on port 9082")
       _ <- kafkaProducerResource.use { producer =>
-        processVideoFrames(producer)
+        def loop: IO[Unit] = IO.defer {
+          processVideoFrames(producer).attempt.flatMap {
+            case Right(_) =>
+              IO.println("Finished processing video file. Restarting...") >>
+              IO.sleep(5.seconds) >> loop
+            case Left(ex) =>
+              IO.println(s"Error processing video file: ${ex.getMessage}") >>
+              IO.sleep(5.seconds) >> loop
+          }
+        }
+        loop
       }
     } yield ()
   }

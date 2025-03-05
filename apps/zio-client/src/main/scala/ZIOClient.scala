@@ -14,7 +14,6 @@ import io.prometheus.client.hotspot.DefaultExports
 import io.prometheus.client.{CollectorRegistry, Counter, Gauge, Histogram}
 import zio.stream.ZStream
 
-
 object ZIOClient extends ZIOAppDefault {
 
   // Configuration case classes
@@ -50,6 +49,16 @@ object ZIOClient extends ZIOAppDefault {
     .help("Size of each frame in bytes")
     .register()
 
+  val kafkaProducerErrors: Counter = Counter.build()
+    .name("kafka_producer_errors_total")
+    .help("Total number of Kafka producer errors")
+    .register()
+
+  val hdfsReadErrors: Counter = Counter.build()
+    .name("hdfs_read_errors_total")
+    .help("Total number of HDFS read errors")
+    .register()
+
   // Function to process video frames and send them to Kafka
   def processVideoFrames(producer: Producer, config: AppConfig): ZIO[Any, Throwable, Unit] = {
     for {
@@ -57,8 +66,13 @@ object ZIOClient extends ZIOAppDefault {
       hdfsInputStream <- ZIO.attemptBlocking {
         val conf = new Configuration()
         conf.set("fs.defaultFS", config.hdfs.uri)
+        conf.addResource(new Path("/etc/hadoop/core-site.xml"))
+        conf.addResource(new Path("/etc/hadoop/hdfs-site.xml"))
         val fs = FileSystem.get(new URI(config.hdfs.uri), conf)
         fs.open(new Path(config.hdfs.videoPath))
+      }.catchAll { ex =>
+        hdfsReadErrors.inc()
+        ZIO.fail(ex)
       }
       _ <- ZIO.attempt(println(s"Video file opened from HDFS: ${config.hdfs.videoPath}"))
 
@@ -101,7 +115,7 @@ object ZIOClient extends ZIOAppDefault {
           val record = new ProducerRecord[Array[Byte], Array[Byte]](config.kafka.topic, byteArray)
           producer.produce(record, Serde.byteArray, Serde.byteArray)
             .catchAll { ex =>
-              frameProductionErrors.inc()
+              kafkaProducerErrors.inc()
               ZIO.attempt(println(s"Error sending frame to Kafka: ${ex.getMessage}"))
             }
             .forkDaemon // Run in the background
@@ -110,18 +124,26 @@ object ZIOClient extends ZIOAppDefault {
     } yield ()
   }
 
-  // Main entry point
+  // Main entry point with continuous loop
   override def run: ZIO[Any, Throwable, Unit] = {
     for {
       config <- ZIO.service[AppConfig]
       _ <- ZIO.attempt {
         // Start Prometheus HTTP server
         DefaultExports.initialize()
-        new HTTPServer(9091)
-        println("Prometheus HTTP server started on port 9091")
+        new HTTPServer(9084)
+        println("Prometheus HTTP server started on port 9084")
       }
       producer <- ZIO.service[Producer]
-      _ <- processVideoFrames(producer, config)
+      _ <- ZIO.attemptBlocking {
+        while (true) {
+          processVideoFrames(producer, config).catchAll { ex =>
+            frameProductionErrors.inc()
+            ZIO.attempt(println(s"Error processing video file: ${ex.getMessage}"))
+          }.fork.ignore // Fork the effect and ignore the result
+          Thread.sleep(5000) // Wait before restarting
+        }
+      }
     } yield ()
   }.provide(
     configLayer,
