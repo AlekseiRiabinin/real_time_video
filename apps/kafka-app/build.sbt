@@ -1,6 +1,5 @@
 import sbtassembly.AssemblyPlugin.autoImport._
 
-
 lazy val root = (project in file("."))
   .settings(
     name := "KafkaService",
