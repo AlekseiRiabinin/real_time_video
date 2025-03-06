@@ -1,3 +1,16 @@
+# Ignore Scala and SBT specific files
+target/
+project/target/
+project/project/
+
+# Ignore Eclipse files
+.classpath
+.project
+.settings/
+
+# Ignore log files
+*.log
+
 # macOS
 .DS_Store
 
@@ -27,6 +40,7 @@ local.sbt
 metals.sbt
 
 # IDEA
-.idea
 .idea_modules
 /.worksheet/
+.idea/
+*.iml

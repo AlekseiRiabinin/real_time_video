@@ -1,6 +1,7 @@
 import scala.concurrent.duration._
 import cats.effect.{IO, IOApp, Resource}
 import fs2.kafka._
+import fs2.Stream
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path, FSDataInputStream}
 import java.net.URI
@@ -9,7 +10,6 @@ import io.prometheus.client.exporter.HTTPServer
 import io.prometheus.client.hotspot.DefaultExports
 import io.prometheus.client.{CollectorRegistry, Counter, Gauge, Histogram}
 import com.typesafe.config.ConfigFactory
-import fs2.Stream
 
 
 object FS2Client extends IOApp.Simple {

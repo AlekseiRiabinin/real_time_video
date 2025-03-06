@@ -4,6 +4,7 @@ import zio.kafka.serde._
 import zio.config._
 import zio.config.magnolia._
 import zio.config.typesafe._
+import zio.stream.ZStream
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path, FSDataInputStream}
@@ -12,7 +13,7 @@ import org.bytedeco.javacv.{FFmpegFrameGrabber, Java2DFrameConverter}
 import io.prometheus.client.exporter.HTTPServer
 import io.prometheus.client.hotspot.DefaultExports
 import io.prometheus.client.{CollectorRegistry, Counter, Gauge, Histogram}
-import zio.stream.ZStream
+
 
 object ZIOClient extends ZIOAppDefault {
 

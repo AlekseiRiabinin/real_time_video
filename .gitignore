@@ -22,7 +22,7 @@ __pycache__/
 *.rar
 *.log
 *.tasty
-*.sbt
+# *.sbt
 *.scala_dependencies
 .project
 .target/
@@ -43,4 +43,3 @@ src_managed/
 # OS generated files
 .DS_Store
 Thumbs.db
-
