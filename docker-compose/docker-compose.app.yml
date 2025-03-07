@@ -282,12 +282,7 @@ services:
     environment:
       - BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
       - HDFS_URI=hdfs://namenode:8020
-    # volumes:
-    #   - ./hadoop-config/core-site.xml:/etc/hadoop/core-site.xml:ro
-    #   - ./hadoop-config/hdfs-site.xml:/etc/hadoop/hdfs-site.xml:ro
-    #   - ./hadoop-config:/etc/hadoop:ro
-    #   - /home/aleksei/Projects/real_time_video/apps/hdfs-app/hadoop-libs:/opt/hadoop/share/hadoop/common/lib:ro
-    #   - /home/aleksei/Projects/real_time_video/apps/hdfs-app/hadoop-libs:/opt/hadoop/share/hadoop/hdfs:ro
+      - JAVA_OPTS=-Xmx2g -Xms1g
     ports:
       - "9080:9080"
     networks:
@@ -304,6 +299,8 @@ services:
   akka-client:
     image: alexflames77/akka_client:latest
     container_name: akka-client
+    environment:
+      - JAVA_OPTS=-Xmx2g -Xms1g
     ports:
       - "9081:9081"
     networks:
@@ -320,6 +317,8 @@ services:
   cats-client:
     image: alexflames77/cats_client:latest
     container_name: cats-client
+    environment:
+      - JAVA_OPTS=-Xmx2g -Xms1g
     ports:
       - "9082:9082"
     networks:
@@ -336,6 +335,8 @@ services:
   fs2-client:
     image: alexflames77/fs2_client:latest
     container_name: fs2-client
+    environment:
+      - JAVA_OPTS=-Xmx2g -Xms1g
     ports:
       - "9083:9083"
     networks:
@@ -352,6 +353,8 @@ services:
   zio-client:
     image: alexflames77/zio_client:latest
     container_name: zio-client
+    environment:
+      - JAVA_OPTS=-Xmx2g -Xms1g
     ports:
       - "9084:9084"
     networks:

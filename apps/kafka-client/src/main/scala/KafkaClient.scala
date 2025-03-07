@@ -60,16 +60,16 @@ object KafkaClient {
     val appConfig = AppConfig(
       HdfsConfig(
         uri = config.getString("hdfs.uri"),
-        videoPath = config.getString("hdfs.video-path")
+        videoPath = config.getString("hdfs.videoPath")
       ),
       KafkaConfig(
-        bootstrapServers = config.getString("kafka.bootstrap-servers"),
+        bootstrapServers = config.getString("kafka.bootstrapServers"),
         topic = config.getString("kafka.topic")
       ),
       VideoConfig(
-        frameWidth = config.getInt("video.frame-width"),
-        frameHeight = config.getInt("video.frame-height"),
-        frameRate = config.getInt("video.frame-rate")
+        frameWidth = config.getInt("video.frameWidth"),
+        frameHeight = config.getInt("video.frameHeight"),
+        frameRate = config.getInt("video.frameRate")
       )
     )
 
@@ -109,16 +109,28 @@ object KafkaClient {
     val prometheusServer = new HTTPServer(9080)
     logger.info("Prometheus HTTP server started on port 9080")
 
-    // Continuously process the same video file in a loop
+    // Add shutdown hook to ensure resources are closed properly
+    sys.addShutdownHook {
+      logger.info("Shutdown hook triggered. Closing resources...")
+      kafkaProducer.close()
+      fs.close()
+      prometheusServer.stop()
+      logger.info("KafkaClient stopped.")
+    }
+
+    // Process the video file once
+    try {
+      processVideoFile(fs, new Path(appConfig.hdfs.videoPath), kafkaProducer, appConfig)
+      logger.info("Finished processing video file.")
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Error processing video file: ${ex.getMessage}")
+    }
+
+    // Keep the application running to expose metrics
+    logger.info("Application is running and waiting for termination...")
     while (true) {
-      try {
-        processVideoFile(fs, new Path(appConfig.hdfs.videoPath), kafkaProducer, appConfig)
-        logger.info("Finished processing video file. Restarting...")
-      } catch {
-        case ex: Exception =>
-          logger.error(s"Error processing video file: ${ex.getMessage}")
-          Thread.sleep(5000) // Wait before retrying
-      }
+      Thread.sleep(1000) // Sleep to avoid busy-waiting
     }
   }
 

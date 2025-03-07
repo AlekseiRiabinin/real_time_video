@@ -119,13 +119,12 @@ object ZIOClient extends ZIOAppDefault {
               kafkaProducerErrors.inc()
               ZIO.attempt(println(s"Error sending frame to Kafka: ${ex.getMessage}"))
             }
-            .forkDaemon // Run in the background
         }
         .runDrain
     } yield ()
   }
 
-  // Main entry point with continuous loop
+  // Main entry point
   override def run: ZIO[Any, Throwable, Unit] = {
     for {
       config <- ZIO.service[AppConfig]
@@ -136,15 +135,9 @@ object ZIOClient extends ZIOAppDefault {
         println("Prometheus HTTP server started on port 9084")
       }
       producer <- ZIO.service[Producer]
-      _ <- ZIO.attemptBlocking {
-        while (true) {
-          processVideoFrames(producer, config).catchAll { ex =>
-            frameProductionErrors.inc()
-            ZIO.attempt(println(s"Error processing video file: ${ex.getMessage}"))
-          }.fork.ignore // Fork the effect and ignore the result
-          Thread.sleep(5000) // Wait before restarting
-        }
-      }
+      _ <- processVideoFrames(producer, config) // Process the video file once
+      _ <- ZIO.attempt(println("Video processing completed. Keeping the application running..."))
+      _ <- ZIO.never // Keep the application running indefinitely
     } yield ()
   }.provide(
     configLayer,

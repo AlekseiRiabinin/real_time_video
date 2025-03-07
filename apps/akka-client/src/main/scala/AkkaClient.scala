@@ -1,8 +1,10 @@
+import scala.concurrent.duration._
+import scala.concurrent.{Await, Future, ExecutionContext}
 import akka.actor.ActorSystem
 import akka.kafka.ProducerSettings
 import akka.kafka.scaladsl.Producer
-import akka.stream.scaladsl.{Sink, Source}
-import akka.stream.{ActorMaterializer, Materializer}
+import akka.stream.scaladsl.{Keep, Sink, Source}
+import akka.stream.{ActorMaterializer, KillSwitch, KillSwitches, Materializer}
 import com.typesafe.config.ConfigFactory
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.serialization.ByteArraySerializer
@@ -19,6 +21,7 @@ import io.prometheus.client.{CollectorRegistry, Counter, Gauge, Histogram}
 object AkkaClient extends App {
   implicit val system: ActorSystem = ActorSystem("AkkaClientSystem")
   implicit val materializer: Materializer = Materializer(system)
+  implicit val ec: ExecutionContext = system.dispatcher
 
   val logger = LoggerFactory.getLogger(getClass)
 
@@ -33,16 +36,16 @@ object AkkaClient extends App {
   val appConfig = AppConfig(
     HdfsConfig(
       uri = config.getString("hdfs.uri"),
-      videoPath = config.getString("hdfs.video-path")
+      videoPath = config.getString("hdfs.videoPath")
     ),
     KafkaConfig(
-      bootstrapServers = config.getString("kafka.bootstrap-servers"),
+      bootstrapServers = config.getString("kafka.bootstrapservers"),
       topic = config.getString("kafka.topic")
     ),
     VideoConfig(
-      frameWidth = config.getInt("video.frame-width"),
-      frameHeight = config.getInt("video.frame-height"),
-      frameRate = config.getInt("video.frame-rate")
+      frameWidth = config.getInt("video.frameWidth"),
+      frameHeight = config.getInt("video.frameHeight"),
+      frameRate = config.getInt("video.frameRate")
     )
   )
 
@@ -110,26 +113,24 @@ object AkkaClient extends App {
   val prometheusServer = new HTTPServer(9081)
   logger.info("Prometheus HTTP server started on port 9081")
 
+  // Shutdown flag
+  @volatile private var isShuttingDown = false
+
   // Shutdown hook
   sys.addShutdownHook {
-    logger.info("Shutting down AkkaClient...")
+    logger.info("Shutdown hook triggered. Setting shutdown flag.")
+    isShuttingDown = true
     fs.close()
     system.terminate()
     prometheusServer.stop()
     logger.info("AkkaClient stopped")
   }
 
-  // Continuously process the same video file in a loop
-  while (true) {
-    try {
-      processVideoFile(fs, new Path(appConfig.hdfs.videoPath), producerSettings, appConfig)
-      logger.info("Finished processing video file. Restarting...")
-    } catch {
-      case ex: Exception =>
-        logger.error(s"Error processing video file: ${ex.getMessage}")
-        Thread.sleep(5000) // Wait before retrying
-    }
-  }
+  // Process the video file once
+  val processingFuture = processVideoFile(fs, new Path(appConfig.hdfs.videoPath), producerSettings, appConfig)
+
+  // Wait for the processing to complete
+  Await.result(processingFuture, Duration.Inf)
 
   /** Processes a single video file and sends its frames to Kafka. */
   private def processVideoFile(
@@ -137,58 +138,76 @@ object AkkaClient extends App {
     videoPath: Path,
     producerSettings: ProducerSettings[Array[Byte], Array[Byte]],
     appConfig: AppConfig
-  ): Unit = {
+  ): Future[Unit] = {
     logger.info(s"Processing video file: ${videoPath.getName}")
     val hdfsInputStream = fs.open(videoPath)
     val grabber = new FFmpegFrameGrabber(hdfsInputStream)
-    grabber.setImageWidth(appConfig.video.frameWidth)
-    grabber.setImageHeight(appConfig.video.frameHeight)
-    grabber.setFrameRate(appConfig.video.frameRate)
-    grabber.start()
+    try {
+      grabber.setImageWidth(appConfig.video.frameWidth)
+      grabber.setImageHeight(appConfig.video.frameHeight)
+      grabber.setFrameRate(appConfig.video.frameRate)
+      grabber.start()
 
-    val converter = new Java2DFrameConverter()
+      val converter = new Java2DFrameConverter()
 
-    // Akka Stream to process frames and send them to Kafka
-    val frameSource = Source.unfold(()) { _ =>
-      val frame = grabber.grab()
-      if (frame != null) {
-        val bufferedImage = converter.convert(frame)
-        val byteArray = new Array[Byte](bufferedImage.getWidth * bufferedImage.getHeight * 3)
-        val raster = bufferedImage.getRaster
-        raster.getDataElements(0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray)
-        Some(((), byteArray))
-      } else {
-        None
+      val (killSwitch, streamCompletion) = Source.unfold(()) { _ =>
+        if (isShuttingDown) {
+          logger.info("Shutdown flag is set, stopping frame grabber.")
+          None
+        } else {
+          try {
+            val frame = grabber.grab()
+            if (frame != null) {
+              logger.debug(s"Grabbed frame: ${frame.timestamp}")
+              val bufferedImage = converter.convert(frame)
+              val byteArray = new Array[Byte](bufferedImage.getWidth * bufferedImage.getHeight * 3)
+              val raster = bufferedImage.getRaster
+              raster.getDataElements(0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray)
+              Some(((), byteArray))
+            } else {
+              logger.info("Reached end of video file.")
+              None
+            }
+          } catch {
+            case ex: Exception =>
+              logger.error(s"Error grabbing frame: ${ex.getMessage}")
+              frameProductionErrors.inc()
+              None
+          }
+        }
       }
-    }
-
-    val kafkaSink = Producer.plainSink(producerSettings)
-
-    // Run the stream and update metrics during frame processing
-    frameSource
+      .viaMat(KillSwitches.single)(Keep.right)
       .map { byteArray =>
         val startTime = System.nanoTime()
-        framesProduced.inc() // Increment frames produced counter
-        frameSize.set(byteArray.length) // Update frame size gauge
+        framesProduced.inc()
+        frameSize.set(byteArray.length)
 
         val record = new ProducerRecord[Array[Byte], Array[Byte]](appConfig.kafka.topic, byteArray)
 
         val endTime = System.nanoTime()
-        frameProductionTime.observe((endTime - startTime) / 1e9) // Update production time histogram
+        frameProductionTime.observe((endTime - startTime) / 1e9)
 
         record
       }
       .recover {
         case ex: Exception =>
-          frameProductionErrors.inc() // Increment error counter
+          frameProductionErrors.inc()
           logger.error("Error producing frame", ex)
           null
       }
       .filter(_ != null)
-      .runWith(kafkaSink)
+      .toMat(Producer.plainSink(producerSettings))(Keep.both)
+      .run()
 
-    grabber.stop()
-    hdfsInputStream.close()
-    logger.info(s"Finished processing video file: ${videoPath.getName}")
+      // Ensure the program exits after processing the video file
+      streamCompletion.map { _ =>
+        logger.info(s"Finished processing video file: ${videoPath.getName}")
+      }.recover { case ex =>
+        logger.error(s"Stream failed: ${ex.getMessage}")
+      }
+    } finally {
+      grabber.stop()
+      hdfsInputStream.close()
+    }
   }
 }

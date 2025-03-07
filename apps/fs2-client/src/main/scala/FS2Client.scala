@@ -25,16 +25,16 @@ object FS2Client extends IOApp.Simple {
   val appConfig = AppConfig(
     HdfsConfig(
       uri = config.getString("hdfs.uri"),
-      videoPath = config.getString("hdfs.video-path")
+      videoPath = config.getString("hdfs.videoPath")
     ),
     KafkaConfig(
-      bootstrapServers = config.getString("kafka.bootstrap-servers"),
+      bootstrapServers = config.getString("kafka.bootstrapServers"),
       topic = config.getString("kafka.topic")
     ),
     VideoConfig(
-      frameWidth = config.getInt("video.frame-width"),
-      frameHeight = config.getInt("video.frame-height"),
-      frameRate = config.getInt("video.frame-rate")
+      frameWidth = config.getInt("video.frameWidth"),
+      frameHeight = config.getInt("video.frameHeight"),
+      frameRate = config.getInt("video.frameRate")
     )
   )
 
@@ -158,25 +158,17 @@ object FS2Client extends IOApp.Simple {
     }
   }
 
-  // Main entry point with continuous loop
+  // Main entry point
   override def run: IO[Unit] = {
     for {
       _ <- IO(DefaultExports.initialize()) // Initialize Prometheus default metrics
       _ <- IO(new HTTPServer(9083)) // Start Prometheus HTTP server
       _ <- IO.println("Prometheus HTTP server started on port 9083")
       _ <- kafkaProducerResource.use { producer =>
-        def loop: IO[Unit] = IO.defer {
-          processVideoFrames(producer).attempt.flatMap {
-            case Right(_) =>
-              IO.println("Finished processing video file. Restarting...") >>
-              IO.sleep(5.seconds) >> loop
-            case Left(ex) =>
-              IO.println(s"Error processing video file: ${ex.getMessage}") >>
-              IO.sleep(5.seconds) >> loop
-          }
-        }
-        loop
+        processVideoFrames(producer) // Process the video file once
       }
+      _ <- IO.println("Video processing completed. Keeping the application running...")
+      _ <- IO.never // Keep the application running indefinitely
     } yield ()
   }
 }
