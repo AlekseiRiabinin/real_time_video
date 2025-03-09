@@ -15,6 +15,10 @@ import java.util.Properties
 
 object CatsClient extends IOApp.Simple {
 
+  // Constants for labels
+  private val APPLICATION_LABEL = "application"
+  private val CATS_CLIENT_LABEL = "cats-client"
+
   // Configuration case classes
   case class HdfsConfig(uri: String, videoPath: String)
   case class KafkaConfig(bootstrapServers: String, topic: String)
@@ -58,7 +62,7 @@ object CatsClient extends IOApp.Simple {
   } catch {
     case ex: Exception =>
       println(s"Failed to connect to HDFS: ${ex.getMessage}")
-      hdfsReadErrors.inc()
+      hdfsReadErrors.labels(CATS_CLIENT_LABEL).inc()
       System.exit(1) // Exit the program if HDFS connection fails
       throw ex // This line is unreachable but required for type safety
   }
@@ -69,35 +73,41 @@ object CatsClient extends IOApp.Simple {
   kafkaProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, classOf[ByteArraySerializer].getName)
   kafkaProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, classOf[ByteArraySerializer].getName)
 
-  // Prometheus metrics
+  // Prometheus metrics with labels
   val framesProduced: Counter = Counter.build()
     .name("frames_produced_total")
     .help("Total number of frames produced")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   val frameProductionTime: Histogram = Histogram.build()
     .name("frame_production_time_seconds")
     .help("Time taken to produce each frame")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   val frameProductionErrors: Counter = Counter.build()
     .name("frame_production_errors_total")
     .help("Total number of frame production errors")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   val frameSize: Gauge = Gauge.build()
     .name("frame_size_bytes")
     .help("Size of each frame in bytes")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   val kafkaProducerErrors: Counter = Counter.build()
     .name("kafka_producer_errors_total")
     .help("Total number of Kafka producer errors")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   val hdfsReadErrors: Counter = Counter.build()
     .name("hdfs_read_errors_total")
     .help("Total number of HDFS read errors")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   // Resource for Kafka Producer
@@ -129,10 +139,10 @@ object CatsClient extends IOApp.Simple {
             val raster = bufferedImage.getRaster
             raster.getDataElements(0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray)
 
-            // Update Prometheus metrics
-            framesProduced.inc()
-            frameSize.set(byteArray.length)
-            frameProductionTime.observe((System.nanoTime() - startTime) / 1e9)
+            // Update Prometheus metrics with application label
+            framesProduced.labels(CATS_CLIENT_LABEL).inc()
+            frameSize.labels(CATS_CLIENT_LABEL).set(byteArray.length)
+            frameProductionTime.labels(CATS_CLIENT_LABEL).observe((System.nanoTime() - startTime) / 1e9)
 
             // Send the frame to Kafka
             val record = new ProducerRecord[Array[Byte], Array[Byte]](appConfig.kafka.topic, byteArray)
@@ -140,7 +150,7 @@ object CatsClient extends IOApp.Simple {
             println("Frame sent to Kafka")
           } catch {
             case ex: Exception =>
-              frameProductionErrors.inc()
+              frameProductionErrors.labels(CATS_CLIENT_LABEL).inc()
               println(s"Error processing frame: ${ex.getMessage}")
           }
           frame = grabber.grab()
@@ -148,7 +158,7 @@ object CatsClient extends IOApp.Simple {
 
         println("End of video file reached")
       }.handleErrorWith { ex =>
-        frameProductionErrors.inc()
+        frameProductionErrors.labels(CATS_CLIENT_LABEL).inc()
         IO.println(s"Error processing video: ${ex.getMessage}")
       }
     }

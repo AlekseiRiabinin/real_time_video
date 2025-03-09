@@ -14,6 +14,10 @@ import com.typesafe.config.ConfigFactory
 
 object FS2Client extends IOApp.Simple {
 
+  // Constants for labels
+  private val APPLICATION_LABEL = "application"
+  private val FS2_CLIENT_LABEL = "fs2-client"
+
   // Configuration case classes
   case class HdfsConfig(uri: String, videoPath: String)
   case class KafkaConfig(bootstrapServers: String, topic: String)
@@ -57,7 +61,7 @@ object FS2Client extends IOApp.Simple {
   } catch {
     case ex: Exception =>
       println(s"Failed to connect to HDFS: ${ex.getMessage}")
-      hdfsReadErrors.inc()
+      hdfsReadErrors.labels(FS2_CLIENT_LABEL).inc()
       System.exit(1) // Exit the program if HDFS connection fails
       throw ex // This line is unreachable but required for type safety
   }
@@ -67,35 +71,41 @@ object FS2Client extends IOApp.Simple {
     ProducerSettings[IO, Array[Byte], Array[Byte]]
       .withBootstrapServers(appConfig.kafka.bootstrapServers)
 
-  // Prometheus metrics
+  // Prometheus metrics with labels
   val framesProduced: Counter = Counter.build()
     .name("frames_produced_total")
     .help("Total number of frames produced")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   val frameProductionTime: Histogram = Histogram.build()
     .name("frame_production_time_seconds")
     .help("Time taken to produce each frame")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   val frameProductionErrors: Counter = Counter.build()
     .name("frame_production_errors_total")
     .help("Total number of frame production errors")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   val frameSize: Gauge = Gauge.build()
     .name("frame_size_bytes")
     .help("Size of each frame in bytes")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   val kafkaProducerErrors: Counter = Counter.build()
     .name("kafka_producer_errors_total")
     .help("Total number of Kafka producer errors")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   val hdfsReadErrors: Counter = Counter.build()
     .name("hdfs_read_errors_total")
     .help("Total number of HDFS read errors")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   // Resource for Kafka Producer
@@ -128,10 +138,10 @@ object FS2Client extends IOApp.Simple {
             val raster = bufferedImage.getRaster
             raster.getDataElements(0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray)
 
-            // Update Prometheus metrics
-            framesProduced.inc()
-            frameSize.set(byteArray.length)
-            frameProductionTime.observe((System.nanoTime() - startTime) / 1e9)
+            // Update Prometheus metrics with application label
+            framesProduced.labels(FS2_CLIENT_LABEL).inc()
+            frameSize.labels(FS2_CLIENT_LABEL).set(byteArray.length)
+            frameProductionTime.labels(FS2_CLIENT_LABEL).observe((System.nanoTime() - startTime) / 1e9)
 
             Some((byteArray, ()))
           } else {
@@ -145,7 +155,7 @@ object FS2Client extends IOApp.Simple {
             producer.produceOne(record).flatten
               .flatTap(_ => IO(println("Frame sent to Kafka")))
               .handleErrorWith { ex =>
-                kafkaProducerErrors.inc()
+                kafkaProducerErrors.labels(FS2_CLIENT_LABEL).inc()
                 IO(println(s"Error sending frame to Kafka: ${ex.getMessage}"))
               }
           }
@@ -153,7 +163,7 @@ object FS2Client extends IOApp.Simple {
           .drain
       }.flatten
     }.handleErrorWith { ex =>
-      frameProductionErrors.inc()
+      frameProductionErrors.labels(FS2_CLIENT_LABEL).inc()
       IO(println(s"Error processing video: ${ex.getMessage}"))
     }
   }

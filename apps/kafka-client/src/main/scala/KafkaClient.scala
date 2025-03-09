@@ -14,6 +14,10 @@ import org.slf4j.LoggerFactory
 
 object KafkaClient {
 
+  // Constants for labels
+  private val APPLICATION_LABEL = "application"
+  private val KAFKA_CLIENT_LABEL = "kafka-client"
+
   // Logger
   private val logger = LoggerFactory.getLogger(getClass)
 
@@ -23,35 +27,41 @@ object KafkaClient {
   case class VideoConfig(frameWidth: Int, frameHeight: Int, frameRate: Int)
   case class AppConfig(hdfs: HdfsConfig, kafka: KafkaConfig, video: VideoConfig)
 
-  // Prometheus metrics
+  // Prometheus metrics with labels
   private val framesProduced: Counter = Counter.build()
     .name("frames_produced_total")
     .help("Total number of frames produced")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   private val frameProductionTime: Histogram = Histogram.build()
     .name("frame_production_time_seconds")
     .help("Time taken to produce each frame")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   private val frameProductionErrors: Counter = Counter.build()
     .name("frame_production_errors_total")
     .help("Total number of frame production errors")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   private val frameSize: Gauge = Gauge.build()
     .name("frame_size_bytes")
     .help("Size of each frame in bytes")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   private val kafkaProducerErrors: Counter = Counter.build()
     .name("kafka_producer_errors_total")
     .help("Total number of Kafka producer errors")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   private val hdfsReadErrors: Counter = Counter.build()
     .name("hdfs_read_errors_total")
     .help("Total number of HDFS read errors")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   def main(args: Array[String]): Unit = {
@@ -92,7 +102,7 @@ object KafkaClient {
     } catch {
       case ex: Exception =>
         logger.error(s"Failed to connect to HDFS: ${ex.getMessage}")
-        hdfsReadErrors.inc()
+        hdfsReadErrors.labels("kafka-client").inc() // Label for application
         System.exit(1) // Exit the program if HDFS connection fails
         throw ex // This line is unreachable but required for type safety
     }
@@ -162,17 +172,17 @@ object KafkaClient {
         val raster = bufferedImage.getRaster
         raster.getDataElements(0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray)
 
-        // Update Prometheus metrics
-        framesProduced.inc()
-        frameSize.set(byteArray.length)
-        frameProductionTime.observe((System.nanoTime() - startTime) / 1e9)
+        // Update Prometheus metrics with application label
+        framesProduced.labels(KAFKA_CLIENT_LABEL).inc()
+        frameSize.labels(KAFKA_CLIENT_LABEL).set(byteArray.length)
+        frameProductionTime.labels(KAFKA_CLIENT_LABEL).observe((System.nanoTime() - startTime) / 1e9)
 
         // Send the frame to Kafka
         val record = new ProducerRecord[Array[Byte], Array[Byte]](appConfig.kafka.topic, byteArray)
         kafkaProducer.send(record, new Callback {
           override def onCompletion(metadata: RecordMetadata, exception: Exception): Unit = {
             if (exception != null) {
-              kafkaProducerErrors.inc()
+              kafkaProducerErrors.labels(KAFKA_CLIENT_LABEL).inc()
               logger.error(s"Failed to send frame to Kafka: ${exception.getMessage}")
             } else {
               logger.debug("Frame sent to Kafka")
@@ -181,7 +191,7 @@ object KafkaClient {
         })
       } catch {
         case ex: Exception =>
-          frameProductionErrors.inc()
+          frameProductionErrors.labels(KAFKA_CLIENT_LABEL).inc()
           logger.error(s"Error processing frame: ${ex.getMessage}")
       }
       frame = grabber.grab()

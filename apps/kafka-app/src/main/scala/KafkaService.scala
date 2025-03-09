@@ -19,6 +19,10 @@ object KafkaService extends App {
   implicit val system: ActorSystem = ActorSystem("KafkaServiceSystem")
   implicit val materializer: Materializer = Materializer(system)
 
+  // Constants for labels
+  private val APPLICATION_LABEL = "application"
+  private val KAFKA_SERVICE_LABEL = "kafka-service"
+
   val log = LoggerFactory.getLogger(getClass)
   
   // Load configuration
@@ -41,25 +45,29 @@ object KafkaService extends App {
     .withProperty(ConsumerConfig.REQUEST_TIMEOUT_MS_CONFIG, "30000")
     .withProperty(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, "1048576")
 
-  // Prometheus metrics for consumer
-  val messagesConsumed = Counter.build()
+  // Prometheus metrics with labels
+  val messagesConsumed: Counter = Counter.build()
     .name("messages_consumed_total")
     .help("Total number of messages consumed")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
-  val messageConsumptionTime = Histogram.build()
+  val messageConsumptionTime: Histogram = Histogram.build()
     .name("message_consumption_time_seconds")
     .help("Time taken to consume each message")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
-  val messageConsumptionErrors = Counter.build()
+  val messageConsumptionErrors: Counter = Counter.build()
     .name("message_consumption_errors_total")
     .help("Total number of message consumption errors")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
-  val consumerLag = Gauge.build()
+  val consumerLag: Gauge = Gauge.build()
     .name("consumer_lag_seconds")
     .help("Time lag between message production and consumption")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   // Start Prometheus HTTP server
@@ -75,12 +83,12 @@ object KafkaService extends App {
       .committableSource(consumerSettings, Subscriptions.topics(topic))
       .mapAsync(1) { (msg: CommittableMessage[Array[Byte], String]) =>
         val startTime = System.nanoTime()
-        messagesConsumed.inc() // Increment messages consumed counter
+        messagesConsumed.labels(KAFKA_SERVICE_LABEL).inc()
 
         val byteArray = msg.record.value()
         val produceTime = msg.record.timestamp() // Timestamp when the message was produced
         val lagTime = if (produceTime >= 0) (System.currentTimeMillis() - produceTime) / 1000.0 else 0
-        consumerLag.set(lagTime) // Update consumer lag gauge
+        consumerLag.labels(KAFKA_SERVICE_LABEL).set(lagTime)
 
         Future {
           val byteArray = msg.record.value()
@@ -90,12 +98,12 @@ object KafkaService extends App {
           log.debug(s"Consumer lag: $lagTime seconds")
 
           val endTime = System.nanoTime()
-          messageConsumptionTime.observe((endTime - startTime) / 1e9) // Update consumption time histogram
+          messageConsumptionTime.labels(KAFKA_SERVICE_LABEL).observe((endTime - startTime) / 1e9)
 
           msg.committableOffset
         }.recover {
           case ex: Exception =>
-            messageConsumptionErrors.inc() // Increment error counter
+            messageConsumptionErrors.labels(KAFKA_SERVICE_LABEL).inc()
             log.error("Error processing message", ex)
             msg.committableOffset
         }

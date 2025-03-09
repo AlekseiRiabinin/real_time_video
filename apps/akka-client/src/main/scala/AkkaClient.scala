@@ -23,6 +23,10 @@ object AkkaClient extends App {
   implicit val materializer: Materializer = Materializer(system)
   implicit val ec: ExecutionContext = system.dispatcher
 
+  // Constants for labels
+  private val APPLICATION_LABEL = "application"
+  private val AKKA_CLIENT_LABEL = "akka-client"
+
   val logger = LoggerFactory.getLogger(getClass)
 
   // Configuration case classes
@@ -68,7 +72,7 @@ object AkkaClient extends App {
   } catch {
     case ex: Exception =>
       logger.error(s"Failed to connect to HDFS: ${ex.getMessage}")
-      hdfsReadErrors.inc()
+      hdfsReadErrors.labels(AKKA_CLIENT_LABEL).inc()
       System.exit(1) // Exit the program if HDFS connection fails
       throw ex // This line is unreachable but required for type safety
   }
@@ -77,35 +81,41 @@ object AkkaClient extends App {
   val producerSettings = ProducerSettings(system, new ByteArraySerializer, new ByteArraySerializer)
     .withBootstrapServers(appConfig.kafka.bootstrapServers)
 
-  // Prometheus metrics
+  // Prometheus metrics with labels
   val framesProduced: Counter = Counter.build()
     .name("frames_produced_total")
     .help("Total number of frames produced")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   val frameProductionTime: Histogram = Histogram.build()
     .name("frame_production_time_seconds")
     .help("Time taken to produce each frame")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   val frameProductionErrors: Counter = Counter.build()
     .name("frame_production_errors_total")
     .help("Total number of frame production errors")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   val frameSize: Gauge = Gauge.build()
     .name("frame_size_bytes")
     .help("Size of each frame in bytes")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   val kafkaProducerErrors: Counter = Counter.build()
     .name("kafka_producer_errors_total")
     .help("Total number of Kafka producer errors")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   val hdfsReadErrors: Counter = Counter.build()
     .name("hdfs_read_errors_total")
     .help("Total number of HDFS read errors")
+    .labelNames(APPLICATION_LABEL)
     .register()
 
   // Initialize Prometheus default metrics and start HTTP server
@@ -171,7 +181,7 @@ object AkkaClient extends App {
           } catch {
             case ex: Exception =>
               logger.error(s"Error grabbing frame: ${ex.getMessage}")
-              frameProductionErrors.inc()
+              frameProductionErrors.labels(AKKA_CLIENT_LABEL).inc()
               None
           }
         }
@@ -179,19 +189,19 @@ object AkkaClient extends App {
       .viaMat(KillSwitches.single)(Keep.right)
       .map { byteArray =>
         val startTime = System.nanoTime()
-        framesProduced.inc()
-        frameSize.set(byteArray.length)
+        framesProduced.labels(AKKA_CLIENT_LABEL).inc()
+        frameSize.labels(AKKA_CLIENT_LABEL).set(byteArray.length)
 
         val record = new ProducerRecord[Array[Byte], Array[Byte]](appConfig.kafka.topic, byteArray)
 
         val endTime = System.nanoTime()
-        frameProductionTime.observe((endTime - startTime) / 1e9)
+        frameProductionTime.labels(AKKA_CLIENT_LABEL).observe((endTime - startTime) / 1e9)
 
         record
       }
       .recover {
         case ex: Exception =>
-          frameProductionErrors.inc()
+          frameProductionErrors.labels(AKKA_CLIENT_LABEL).inc()
           logger.error("Error producing frame", ex)
           null
       }
