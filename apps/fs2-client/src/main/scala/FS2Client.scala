@@ -16,7 +16,13 @@ object FS2Client extends IOApp.Simple {
 
   // Constants for labels
   private val APPLICATION_LABEL = "application"
-  private val FS2_CLIENT_LABEL = "fs2-client"
+  private val INSTANCE_LABEL = "instance"
+  private val JOB_LABEL = "job"
+
+  // Label values
+  private val APPLICATION_VALUE = "fs2-client"
+  private val INSTANCE_VALUE = "fs2-client:9083"
+  private val JOB_VALUE = "fs2-client"
 
   // Configuration case classes
   case class HdfsConfig(uri: String, videoPath: String)
@@ -61,7 +67,7 @@ object FS2Client extends IOApp.Simple {
   } catch {
     case ex: Exception =>
       println(s"Failed to connect to HDFS: ${ex.getMessage}")
-      hdfsReadErrors.labels(FS2_CLIENT_LABEL).inc()
+      hdfsReadErrors.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).inc()
       System.exit(1) // Exit the program if HDFS connection fails
       throw ex // This line is unreachable but required for type safety
   }
@@ -75,37 +81,37 @@ object FS2Client extends IOApp.Simple {
   val framesProduced: Counter = Counter.build()
     .name("frames_produced_total")
     .help("Total number of frames produced")
-    .labelNames(APPLICATION_LABEL)
+    .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
   val frameProductionTime: Histogram = Histogram.build()
     .name("frame_production_time_seconds")
     .help("Time taken to produce each frame")
-    .labelNames(APPLICATION_LABEL)
+    .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
   val frameProductionErrors: Counter = Counter.build()
     .name("frame_production_errors_total")
     .help("Total number of frame production errors")
-    .labelNames(APPLICATION_LABEL)
+    .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
   val frameSize: Gauge = Gauge.build()
     .name("frame_size_bytes")
     .help("Size of each frame in bytes")
-    .labelNames(APPLICATION_LABEL)
+    .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
   val kafkaProducerErrors: Counter = Counter.build()
     .name("kafka_producer_errors_total")
     .help("Total number of Kafka producer errors")
-    .labelNames(APPLICATION_LABEL)
+    .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
   val hdfsReadErrors: Counter = Counter.build()
     .name("hdfs_read_errors_total")
     .help("Total number of HDFS read errors")
-    .labelNames(APPLICATION_LABEL)
+    .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
   // Resource for Kafka Producer
@@ -139,9 +145,11 @@ object FS2Client extends IOApp.Simple {
             raster.getDataElements(0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray)
 
             // Update Prometheus metrics with application label
-            framesProduced.labels(FS2_CLIENT_LABEL).inc()
-            frameSize.labels(FS2_CLIENT_LABEL).set(byteArray.length)
-            frameProductionTime.labels(FS2_CLIENT_LABEL).observe((System.nanoTime() - startTime) / 1e9)
+            framesProduced.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).inc()
+            frameSize.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).set(byteArray.length)
+            frameProductionTime
+              .labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE)
+              .observe((System.nanoTime() - startTime) / 1e9)
 
             Some((byteArray, ()))
           } else {
@@ -155,7 +163,7 @@ object FS2Client extends IOApp.Simple {
             producer.produceOne(record).flatten
               .flatTap(_ => IO(println("Frame sent to Kafka")))
               .handleErrorWith { ex =>
-                kafkaProducerErrors.labels(FS2_CLIENT_LABEL).inc()
+                kafkaProducerErrors.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).inc()
                 IO(println(s"Error sending frame to Kafka: ${ex.getMessage}"))
               }
           }
@@ -163,7 +171,7 @@ object FS2Client extends IOApp.Simple {
           .drain
       }.flatten
     }.handleErrorWith { ex =>
-      frameProductionErrors.labels(FS2_CLIENT_LABEL).inc()
+      frameProductionErrors.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).inc()
       IO(println(s"Error processing video: ${ex.getMessage}"))
     }
   }

@@ -19,7 +19,13 @@ object ZIOClient extends ZIOAppDefault {
 
   // Constants for labels
   private val APPLICATION_LABEL = "application"
-  private val ZIO_CLIENT_LABEL = "zio-client"
+  private val INSTANCE_LABEL = "instance"
+  private val JOB_LABEL = "job"
+
+  // Label values
+  private val APPLICATION_VALUE = "zio-client"
+  private val INSTANCE_VALUE = "zio-client:9084"
+  private val JOB_VALUE = "zio-client"
 
   // Configuration case classes
   case class HdfsConfig(uri: String, videoPath: String)
@@ -37,37 +43,37 @@ object ZIOClient extends ZIOAppDefault {
   val framesProduced: Counter = Counter.build()
     .name("frames_produced_total")
     .help("Total number of frames produced")
-    .labelNames(APPLICATION_LABEL)
+    .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
   val frameProductionTime: Histogram = Histogram.build()
     .name("frame_production_time_seconds")
     .help("Time taken to produce each frame")
-    .labelNames(APPLICATION_LABEL)
+    .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
   val frameProductionErrors: Counter = Counter.build()
     .name("frame_production_errors_total")
     .help("Total number of frame production errors")
-    .labelNames(APPLICATION_LABEL)
+    .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
   val frameSize: Gauge = Gauge.build()
     .name("frame_size_bytes")
     .help("Size of each frame in bytes")
-    .labelNames(APPLICATION_LABEL)
+    .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
   val kafkaProducerErrors: Counter = Counter.build()
     .name("kafka_producer_errors_total")
     .help("Total number of Kafka producer errors")
-    .labelNames(APPLICATION_LABEL)
+    .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
   val hdfsReadErrors: Counter = Counter.build()
     .name("hdfs_read_errors_total")
     .help("Total number of HDFS read errors")
-    .labelNames(APPLICATION_LABEL)
+    .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
   // Function to process video frames and send them to Kafka
@@ -82,7 +88,7 @@ object ZIOClient extends ZIOAppDefault {
         val fs = FileSystem.get(new URI(config.hdfs.uri), conf)
         fs.open(new Path(config.hdfs.videoPath))
       }.catchAll { ex =>
-        hdfsReadErrors.labels(ZIO_CLIENT_LABEL).inc()
+        hdfsReadErrors.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).inc()
         ZIO.fail(ex)
       }
       _ <- ZIO.attempt(println(s"Video file opened from HDFS: ${config.hdfs.videoPath}"))
@@ -110,9 +116,11 @@ object ZIOClient extends ZIOAppDefault {
           raster.getDataElements(0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray)
 
           // Update Prometheus metrics with application label
-          framesProduced.labels(ZIO_CLIENT_LABEL).inc()
-          frameSize.labels(ZIO_CLIENT_LABEL).set(byteArray.length)
-          frameProductionTime.labels(ZIO_CLIENT_LABEL).observe((java.lang.System.nanoTime() - startTime) / 1e9)
+          framesProduced.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).inc()
+          frameSize.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).set(byteArray.length)
+          frameProductionTime
+            .labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE)
+            .observe((java.lang.System.nanoTime() - startTime) / 1e9)
 
           Some((byteArray, ()))
         } else {
@@ -126,7 +134,7 @@ object ZIOClient extends ZIOAppDefault {
           val record = new ProducerRecord[Array[Byte], Array[Byte]](config.kafka.topic, byteArray)
           producer.produce(record, Serde.byteArray, Serde.byteArray)
             .catchAll { ex =>
-              kafkaProducerErrors.labels(ZIO_CLIENT_LABEL).inc()
+              kafkaProducerErrors.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).inc()
               ZIO.attempt(println(s"Error sending frame to Kafka: ${ex.getMessage}"))
             }
         }
