@@ -1,5 +1,5 @@
-# video file
-video.mp4
+# video files
+videos/
 
 # Ignore log files
 *.log

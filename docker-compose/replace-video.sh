@@ -55,11 +55,16 @@ wait_for_safe_mode_exit() {
     log "NameNode has exited safe mode."
 }
 
-# Function to shut down HDFS
-shutdown_hdfs() {
-    log "Shutting down HDFS..."
-    docker compose -f "$DOCKER_COMPOSE_FILE" down
-    log "HDFS has been shut down."
+# Function to shut down HDFS nodes
+shutdown_hdfs_nodes() {
+    log "Shutting down HDFS nodes..."
+    docker compose -f "$DOCKER_COMPOSE_FILE" down namenode datanode
+    if [ $? -eq 0 ]; then
+        log "HDFS nodes (NameNode and DataNode) have been shut down successfully."
+    else
+        log "Error: Failed to shut down HDFS nodes."
+        exit 1
+    fi
 }
 
 # Load environment variables
@@ -87,42 +92,37 @@ check_cluster_id_mismatch
 # Wait for NameNode to exit safe mode
 wait_for_safe_mode_exit
 
-# Check if video.mp4 exists in the local directory
-if [ ! -f ./video.mp4 ]; then
-    log "Error: video.mp4 not found in the local directory. Please ensure the file exists."
-    exit 1
-fi
-
-# Remove the old video file from HDFS if it exists
-log "Checking if old video.mp4 exists in HDFS..."
-if docker exec namenode hdfs dfs -test -e /videos/video.mp4; then
-    log "Old video.mp4 found in HDFS. Removing it..."
-    docker exec namenode hdfs dfs -rm -f /videos/video.mp4
-    log "Old video.mp4 removed from HDFS."
-else
-    log "No old video.mp4 found in HDFS."
-fi
-
-# Copy video.mp4 to namenode container
-log "Copying new video.mp4 to namenode container..."
-if ! docker cp ./video.mp4 namenode:/tmp/video.mp4; then
-    log "Error: Failed to copy video.mp4 to namenode container."
-    exit 1
-fi
-
 # Create /videos directory in HDFS if it doesn't exist
 log "Creating /videos directory in HDFS..."
 docker exec -it namenode hdfs dfs -mkdir -p /videos
 
-# Upload new video.mp4 to HDFS
-log "Uploading new video.mp4 to HDFS..."
-docker exec -it namenode hdfs dfs -put -f /tmp/video.mp4 /videos/video.mp4
+# Remove all old video files from HDFS if they exist
+log "Removing old video files from HDFS..."
+docker exec namenode hdfs dfs -rm -f /videos/video_*.mp4
 
-# Verify the file is in HDFS
-log "Verifying new video.mp4 in HDFS..."
+# Copy new video files to namenode container
+log "Copying new video files to namenode container..."
+for i in {1..10}; do
+  video_file="video_$(printf "%02d" $i).mp4"
+  if [ ! -f "./videos/$video_file" ]; then
+    log "Error: $video_file not found in the local directory. Please ensure the file exists."
+    exit 1
+  fi
+  docker cp "./videos/$video_file" namenode:/tmp/$video_file
+done
+
+# Upload new video files to HDFS
+log "Uploading new video files to HDFS..."
+for i in {1..10}; do
+  video_file="video_$(printf "%02d" $i).mp4"
+  docker exec -it namenode hdfs dfs -put -f /tmp/$video_file /videos/$video_file
+done
+
+# Verify the files are in HDFS
+log "Verifying new video files in HDFS..."
 docker exec -it namenode hdfs dfs -ls /videos
 
-# Shut down HDFS
-shutdown_hdfs
+log "Video files replacement completed successfully."
 
-log "Video file replacement completed successfully."
+# Shut down HDFS nodes after replacement
+shutdown_hdfs_nodes

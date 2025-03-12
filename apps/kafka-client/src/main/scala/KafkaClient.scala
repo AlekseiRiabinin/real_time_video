@@ -134,13 +134,27 @@ object KafkaClient {
       logger.info("KafkaClient stopped.")
     }
 
-    // Process the video file once
+    // Process all video files in a loop
     try {
-      processVideoFile(fs, new Path(appConfig.hdfs.videoPath), kafkaProducer, appConfig)
-      logger.info("Finished processing video file.")
+      while (true) { // Loop indefinitely
+        val videoDir = new Path("/videos")
+        val videoFiles = fs.listStatus(videoDir).filter(_.isFile)
+        if (videoFiles.isEmpty) {
+          logger.warn("No video files found in /videos directory. Waiting for files...")
+          Thread.sleep(5000) // Wait for 5 seconds before checking again
+        } else {
+          videoFiles.sortBy(_.getPath.getName).foreach { fileStatus =>
+            val videoPath = fileStatus.getPath
+            // Match files like video_01.mp4, video_02.mp4, etc.
+            if (videoPath.getName.matches("video_\\d{2}\\.mp4")) {
+              processVideoFile(fs, videoPath, kafkaProducer, appConfig)
+            }
+          }
+        }
+      }
     } catch {
       case ex: Exception =>
-        logger.error(s"Error processing video file: ${ex.getMessage}")
+        logger.error(s"Error processing video files: ${ex.getMessage}")
     }
 
     // Keep the application running to expose metrics
