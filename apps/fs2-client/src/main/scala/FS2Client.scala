@@ -1,5 +1,6 @@
 import scala.concurrent.duration._
 import cats.effect.{IO, IOApp, Resource}
+import cats.implicits._
 import fs2.kafka._
 import fs2.Stream
 import org.apache.hadoop.conf.Configuration
@@ -119,12 +120,12 @@ object FS2Client extends IOApp.Simple {
     KafkaProducer.resource(producerSettings)
 
   // Resource for HDFS InputStream
-  def hdfsInputStreamResource: Resource[IO, FSDataInputStream] =
-    Resource.make(IO(fs.open(new Path(appConfig.hdfs.videoPath))))(stream => IO(stream.close()))
+  def hdfsInputStreamResource(videoPath: Path): Resource[IO, FSDataInputStream] =
+    Resource.make(IO(fs.open(videoPath)))(stream => IO(stream.close()))
 
   // Function to process video frames and send them to Kafka
-  def processVideoFrames(producer: KafkaProducer[IO, Array[Byte], Array[Byte]]): IO[Unit] = {
-    hdfsInputStreamResource.use { hdfsInputStream =>
+  def processVideoFrames(producer: KafkaProducer[IO, Array[Byte], Array[Byte]], videoPath: Path): IO[Unit] = {
+    hdfsInputStreamResource(videoPath).use { hdfsInputStream =>
       IO.blocking {
         val grabber = new FFmpegFrameGrabber(hdfsInputStream)
         grabber.setImageWidth(appConfig.video.frameWidth)
@@ -176,6 +177,29 @@ object FS2Client extends IOApp.Simple {
     }
   }
 
+  // Main loop to process video files
+  def processVideoFiles(producer: KafkaProducer[IO, Array[Byte], Array[Byte]]): IO[Unit] = {
+    for {
+      _ <- IO.println("Checking for video files...")
+      videoDir = new Path(appConfig.hdfs.videoPath)
+      videoFiles <- IO(fs.listStatus(videoDir).filter(_.isFile))
+      _ <- if (videoFiles.isEmpty) {
+        IO.println("No video files found. Waiting for 5 seconds...") >> IO.sleep(5.seconds)
+      } else {
+        IO.println(s"Found ${videoFiles.length} video files. Processing...") >>
+          videoFiles.toList.sortBy(_.getPath.getName).traverse_ { fileStatus =>
+            val videoPath = fileStatus.getPath
+            if (videoPath.getName.matches("video_\\d{2}\\.mp4")) {
+              processVideoFrames(producer, videoPath)
+            } else {
+              IO.unit // Skip files that don't match the pattern
+            }
+          }
+      }
+      _ <- processVideoFiles(producer) // Recursively call to continue processing
+    } yield ()
+  }
+
   // Main entry point
   override def run: IO[Unit] = {
     for {
@@ -183,10 +207,8 @@ object FS2Client extends IOApp.Simple {
       _ <- IO(new HTTPServer(9083)) // Start Prometheus HTTP server
       _ <- IO.println("Prometheus HTTP server started on port 9083")
       _ <- kafkaProducerResource.use { producer =>
-        processVideoFrames(producer) // Process the video file once
+        processVideoFiles(producer) // Start the main processing loop
       }
-      _ <- IO.println("Video processing completed. Keeping the application running...")
-      _ <- IO.never // Keep the application running indefinitely
     } yield ()
   }
 }

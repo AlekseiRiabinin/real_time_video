@@ -77,7 +77,7 @@ object ZIOClient extends ZIOAppDefault {
     .register()
 
   // Function to process video frames and send them to Kafka
-  def processVideoFrames(producer: Producer, config: AppConfig): ZIO[Any, Throwable, Unit] = {
+  def processVideoFrames(producer: Producer, videoPath: Path, config: AppConfig): ZIO[Any, Throwable, Unit] = {
     for {
       // Open HDFS input stream
       hdfsInputStream <- ZIO.attemptBlocking {
@@ -86,12 +86,12 @@ object ZIOClient extends ZIOAppDefault {
         conf.addResource(new Path("/etc/hadoop/core-site.xml"))
         conf.addResource(new Path("/etc/hadoop/hdfs-site.xml"))
         val fs = FileSystem.get(new URI(config.hdfs.uri), conf)
-        fs.open(new Path(config.hdfs.videoPath))
+        fs.open(videoPath)
       }.catchAll { ex =>
         hdfsReadErrors.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).inc()
         ZIO.fail(ex)
       }
-      _ <- ZIO.attempt(println(s"Video file opened from HDFS: ${config.hdfs.videoPath}"))
+      _ <- ZIO.attempt(println(s"Video file opened from HDFS: ${videoPath.getName}"))
 
       // Initialize FFmpegFrameGrabber with the HDFS input stream
       grabber <- ZIO.attemptBlocking {
@@ -142,6 +142,36 @@ object ZIOClient extends ZIOAppDefault {
     } yield ()
   }
 
+  // Main loop to process video files
+  def processVideoFiles(producer: Producer, config: AppConfig): ZIO[Any, Throwable, Unit] = {
+    for {
+      _ <- ZIO.attempt(println("Checking for video files..."))
+      videoDir = new Path(config.hdfs.videoPath)
+      videoFiles <- ZIO.attemptBlocking {
+        val conf = new Configuration()
+        conf.set("fs.defaultFS", config.hdfs.uri)
+        conf.addResource(new Path("/etc/hadoop/core-site.xml"))
+        conf.addResource(new Path("/etc/hadoop/hdfs-site.xml"))
+        val fs = FileSystem.get(new URI(config.hdfs.uri), conf)
+        fs.listStatus(videoDir).filter(_.isFile)
+      }
+      _ <- if (videoFiles.isEmpty) {
+        ZIO.attempt(println("No video files found. Waiting for 5 seconds...")) *> ZIO.sleep(5.seconds)
+      } else {
+        ZIO.attempt(println(s"Found ${videoFiles.length} video files. Processing...")) *>
+          ZIO.foreachDiscard(videoFiles.sortBy(_.getPath.getName)) { fileStatus =>
+            val videoPath = fileStatus.getPath
+            if (videoPath.getName.matches("video_\\d{2}\\.mp4")) {
+              processVideoFrames(producer, videoPath, config)
+            } else {
+              ZIO.unit // Skip files that don't match the pattern
+            }
+          }
+      }
+      _ <- processVideoFiles(producer, config) // Recursively call to continue processing
+    } yield ()
+  }
+
   // Main entry point
   override def run: ZIO[Any, Throwable, Unit] = {
     for {
@@ -153,9 +183,7 @@ object ZIOClient extends ZIOAppDefault {
         println("Prometheus HTTP server started on port 9084")
       }
       producer <- ZIO.service[Producer]
-      _ <- processVideoFrames(producer, config) // Process the video file once
-      _ <- ZIO.attempt(println("Video processing completed. Keeping the application running..."))
-      _ <- ZIO.never // Keep the application running indefinitely
+      _ <- processVideoFiles(producer, config) // Start the main processing loop
     } yield ()
   }.provide(
     configLayer,

@@ -142,11 +142,23 @@ object AkkaClient extends App {
     logger.info("AkkaClient stopped")
   }
 
-  // Process the video file once
-  val processingFuture = processVideoFile(fs, new Path(appConfig.hdfs.videoPath), producerSettings, appConfig)
-
-  // Wait for the processing to complete
-  Await.result(processingFuture, Duration.Inf)
+  // Process video files in a loop
+  while (!isShuttingDown) {
+    val videoDir = new Path(appConfig.hdfs.videoPath)
+    val videoFiles = fs.listStatus(videoDir).filter(_.isFile)
+    if (videoFiles.isEmpty) {
+      logger.warn("No video files found in directory. Waiting for files...")
+      Thread.sleep(5000) // Wait for 5 seconds before checking again
+    } else {
+      videoFiles.sortBy(_.getPath.getName).foreach { fileStatus =>
+        val videoPath = fileStatus.getPath
+        if (videoPath.getName.matches("video_\\d{2}\\.mp4")) {
+          val processingFuture = processVideoFile(fs, videoPath, producerSettings, appConfig)
+          Await.result(processingFuture, Duration.Inf)
+        }
+      }
+    }
+  }
 
   /** Processes a single video file and sends its frames to Kafka. */
   private def processVideoFile(
