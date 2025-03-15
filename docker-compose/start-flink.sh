@@ -102,6 +102,33 @@ check_port_availability() {
     fi
 }
 
+# Function to check and upload video files to HDFS
+upload_videos_to_hdfs() {
+    log "Checking if video files exist in HDFS..."
+    for i in {1..10}; do
+        video_file="video_$(printf "%02d" $i).mp4"
+        if ! docker exec namenode hdfs dfs -test -e /videos/$video_file; then
+            log "$video_file not found in HDFS. Uploading..."
+
+            # Check if the file exists locally
+            if [ ! -f "./videos/$video_file" ]; then
+                log "Error: $video_file not found in the local directory. Please ensure the file exists."
+                exit 1
+            fi
+
+            # Copy the file to the namenode container
+            log "Copying $video_file to namenode container..."
+            docker cp "./videos/$video_file" namenode:/tmp/$video_file
+
+            # Upload the file to HDFS
+            log "Uploading $video_file to HDFS..."
+            docker exec -it namenode hdfs dfs -put -f /tmp/$video_file /videos/$video_file
+        else
+            log "$video_file already exists in HDFS. Skipping upload."
+        fi
+    done
+}
+
 # Load environment variables
 if [ -f .env ]; then
   export $(cat .env | xargs)
@@ -155,36 +182,16 @@ while ! docker exec namenode hdfs dfsadmin -report >/dev/null 2>&1; do
 done
 log "HDFS is ready."
 
-# Check if video.mp4 is already in HDFS
-log "Checking if video.mp4 is already in HDFS..."
-if docker exec namenode hdfs dfs -test -e /videos/video.mp4; then
-    log "video.mp4 is already in HDFS. Skipping copy."
-else
-    # Check if video.mp4 exists in the local directory
-    if [ ! -f ./video.mp4 ]; then
-        log "Error: video.mp4 not found in the local directory. Please ensure the file exists."
-        exit 1
-    fi
+# Create /videos directory in HDFS if it doesn't exist
+log "Creating /videos directory in HDFS..."
+docker exec -it namenode hdfs dfs -mkdir -p /videos
 
-    # Copy video.mp4 to namenode container
-    log "Copying video.mp4 to namenode container..."
-    if ! docker cp ./video.mp4 namenode:/tmp/video.mp4; then
-        log "Error: Failed to copy video.mp4 to namenode container."
-        exit 1
-    fi
+# Upload video files to HDFS if they don't exist
+upload_videos_to_hdfs
 
-    # Create /videos directory in HDFS
-    log "Creating /videos directory in HDFS..."
-    docker exec -it namenode hdfs dfs -mkdir -p /videos
-
-    # Upload video.mp4 to HDFS
-    log "Uploading video.mp4 to HDFS..."
-    docker exec -it namenode hdfs dfs -put /tmp/video.mp4 /videos/video.mp4
-
-    # Verify the file is in HDFS
-    log "Verifying video.mp4 in HDFS..."
-    docker exec -it namenode hdfs dfs -ls /videos
-fi
+# Verify the files are in HDFS
+log "Verifying video files in HDFS..."
+docker exec -it namenode hdfs dfs -ls /videos
 
 # Copy the model to HDFS
 log "Checking if the model is already in HDFS..."
@@ -257,25 +264,6 @@ if ! docker exec -it kafka-1 kafka-topics.sh --describe --topic processed-data -
     docker exec -it kafka-1 kafka-topics.sh --create --topic processed-data --partitions 4 --replication-factor 2 --bootstrap-server kafka-1:9092,kafka-2:9095
 fi
 
-# +++++++++++++++++++++++++++++++++++++++ #
-# 3. Start Kafka service (kafka-service). #
-# +++++++++++++++++++++++++++++++++++++++ #
-
-# Start Kafka-service
-log "Waiting for Kafka-service to start..."
-docker compose -f "$DOCKER_COMPOSE_FILE" up -d kafka-service
-
-# Wait for Kafka service to be ready
-log "Waiting for Kafka service to start..."
-sleep 10
-
-# ++++++++++++++++++++++++++++++++ #
-# 4. Start Prometheus and Grafana. #
-# ++++++++++++++++++++++++++++++++ #
-
-# Start Prometheus and Grafana
-log "Starting Prometheus and Grafana..."
-docker compose -f "$DOCKER_COMPOSE_FILE" up -d prometheus grafana
 
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 # 5. Start Flink (jobmanager and taskmanager) and the Flink job (flink-job). #

@@ -20,7 +20,10 @@ import org.apache.kafka.clients.producer.ProducerRecord
 
 
 class ByteArraySchema extends KafkaSerializationSchema[Array[Byte]] {
-  override def serialize(element: Array[Byte], timestamp: java.lang.Long): ProducerRecord[Array[Byte], Array[Byte]] = {
+  override def serialize(
+    element: Array[Byte],
+    timestamp: java.lang.Long
+  ): ProducerRecord[Array[Byte], Array[Byte]] = {
     new ProducerRecord[Array[Byte], Array[Byte]]("processed-data", null, element)
   }
 }

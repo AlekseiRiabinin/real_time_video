@@ -136,10 +136,16 @@ services:
       - |
         FLINK_PROPERTIES=
         jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 2
         taskmanager.registration.timeout: 5 min
     networks:
       - kafka-net
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2g
 
   # Flink TaskManager
   taskmanager:
@@ -147,11 +153,21 @@ services:
     container_name: taskmanager
     hostname: taskmanager
     command: taskmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 2
     networks:
       - kafka-net
     restart: always
     depends_on:
       - jobmanager
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4g
 
   # Flink Job
   flink-job:
