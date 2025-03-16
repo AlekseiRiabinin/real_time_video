@@ -24,17 +24,20 @@ object SparkMLJob {
     // Initialize Spark session
     val spark = SparkSession.builder
       .appName(config.getString("spark.appName"))
-      // Use environment variable if set, otherwise use application.conf
       .master(sys.env.getOrElse("SPARK_MASTER_URL", config.getString("spark.master")))
-      // Other configurations will be read from spark-defaults.conf
       .getOrCreate()
     logger.info("Spark session initialized successfully")
 
     // Explicitly set Hadoop configuration
     val hadoopConf = spark.sparkContext.hadoopConfiguration
-    // Use environment variable if set, otherwise use application.conf
-    val hdfsDefaultFS = sys.env.getOrElse("SPARK_HADOOP_FS_DEFAULTFS", config.getString("spark.hdfs.defaultFS"))
+    val hdfsDefaultFS = sys.env.getOrElse(
+      "SPARK_HADOOP_FS_DEFAULTFS",
+      config.getString("spark.hdfs.defaultFS")
+    )
     hadoopConf.set("fs.defaultFS", hdfsDefaultFS)
+    hadoopConf.set("dfs.client.use.datanode.hostname", "true")
+    hadoopConf.set("dfs.namenode.rpc-address", "namenode:8020")
+    hadoopConf.set("dfs.namenode.http-address", "namenode:50070")
     
     // Set Hadoop security authentication with a fallback value
     val hdfsAuthentication = if (config.hasPath("spark.hdfs.authentication")) {
@@ -54,24 +57,14 @@ object SparkMLJob {
 
     logger.info("Hadoop configuration set explicitly")
 
-    // Read Kafka configurations
-    val kafkaBootstrapServers = config.getString("spark.kafka.bootstrapServers")
-    val inputTopic = config.getString("spark.kafka.inputTopic")
-    val outputTopic = config.getString("spark.kafka.outputTopic")
-    logger.info(
-      s"""Kafka configurations:
-         |bootstrapServers=$kafkaBootstrapServers,
-         |inputTopic=$inputTopic,
-         |outputTopic=$outputTopic""".stripMargin
-    )
-
     // Read HDFS configurations
+    val inputPath = config.getString("spark.hdfs.inputPath")
     val processedPath = config.getString("spark.hdfs.processedPath")
     val hdfsModelPath = config.getString("spark.hdfs.modelPath")
-    // Use environment variable if set, otherwise use application.conf
     val localModelPath = sys.env.getOrElse("MODEL_PATH", config.getString("spark.local.modelPath"))
     logger.info(
       s"""HDFS configurations:
+         |inputPath=$inputPath,
          |processedPath=$processedPath,
          |hdfsModelPath=$hdfsModelPath,
          |localModelPath=$localModelPath""".stripMargin
@@ -90,21 +83,12 @@ object SparkMLJob {
       case e: Exception => logger.error("Failed to initialize HDFS FileSystem or copy model", e)
     }
 
-    // Read video frames from Kafka
-    val kafkaDF = spark.readStream
-      .format("kafka")
-      .option("kafka.bootstrap.servers", kafkaBootstrapServers)
-      .option("subscribe", inputTopic)
-      .load()
-    logger.info("Kafka DataFrame created successfully")
-
-    // Process video frames and write to HDFS
-    kafkaDF.writeStream
-      .format("parquet")
-      .option("path", processedPath)
-      .option("checkpointLocation", config.getString("spark.hdfs.checkpointLocation"))
-      .start()
-    logger.info("Streaming query started successfully")
+    // Read video files from HDFS
+    logger.info(s"Reading video files from HDFS path: $inputPath")
+    val videoDF = spark.read.format("binaryFile")
+      .option("pathGlobFilter", "*.mp4")
+      .load(inputPath)
+    logger.info("Video files loaded successfully")
 
     // Use the custom image transformer
     val imageTransformer = new CustomImageTransformer()
@@ -112,7 +96,8 @@ object SparkMLJob {
       .setOutputCol("processed_image")
     logger.info("CustomImageTransformer initialized successfully")
 
-    val processedDF = imageTransformer.transform(kafkaDF)
+    // Transform the video frames
+    val processedDF = imageTransformer.transform(videoDF)
     logger.info("DataFrame transformed successfully")
 
     // Use a pre-trained model for inference
@@ -121,15 +106,15 @@ object SparkMLJob {
     val predictions = model.transform(processedDF)
     logger.info("Predictions generated successfully")
 
-    // Write results back to Kafka
-    val query = predictions.selectExpr("CAST(key AS STRING)", "CAST(prediction AS STRING)")
-      .writeStream
-      .format("kafka")
-      .option("kafka.bootstrap.servers", kafkaBootstrapServers)
-      .option("topic", outputTopic)
-      .start()
-    logger.info("Kafka streaming query started successfully")
+    // Write results back to HDFS
+    logger.info(s"Writing results to HDFS path: $processedPath")
+    predictions.write
+      .format("parquet")
+      .mode("overwrite")
+      .option("path", processedPath)
+      .save()
+    logger.info("Results written to HDFS successfully")
 
-    query.awaitTermination()
+    spark.stop()
   }
 }

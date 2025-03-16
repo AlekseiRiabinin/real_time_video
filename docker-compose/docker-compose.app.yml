@@ -252,23 +252,15 @@ services:
     container_name: spark-job
     environment:
       - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_HADOOP_FS_DEFAULTFS=hdfs://namenode:8020    
+      - SPARK_HADOOP_FS_DEFAULTFS=hdfs://namenode:8020
       - MODEL_PATH=/opt/spark-apps/models/saved_model
-      - HADOOP_CONF_DIR=/opt/bitnami/spark/conf
-      - SPARK_HDFS_AUTHENTICATION=simple
-      - SPARK_HDFS_AUTHORIZATION=false
-      - SPARK_EXECUTOR_MEMORY=1g
-      - SPARK_DRIVER_MEMORY=1g
-      - SPARK_EXECUTOR_CORES=1
-      - SPARK_DRIVER_CORES=1
-      - SPARK_SQL_STREAMING_CHECKPOINTLOCATION=/videos/checkpoint      
+      - HADOOP_USER_NAME=hadoop
     volumes:
       - ./ivy2:/opt/bitnami/spark/.ivy2
+      - ./hadoop-conf:/opt/hadoop/etc/hadoop
     depends_on:
       - spark-master
       - namenode
-      - kafka-1
-      - kafka-2      
     networks:
       - kafka-net
     restart: on-failure
@@ -276,15 +268,16 @@ services:
       /opt/bitnami/spark/bin/spark-submit
       --master ${SPARK_MASTER_URL}
       --conf spark.hadoop.fs.defaultFS=${SPARK_HADOOP_FS_DEFAULTFS}
-      --conf spark.hadoop.hadoop.security.authentication=${SPARK_HDFS_AUTHENTICATION}
-      --conf spark.hadoop.hadoop.security.authorization=${SPARK_HDFS_AUTHORIZATION}
-      --conf spark.executor.memory=${SPARK_EXECUTOR_MEMORY}
-      --conf spark.driver.memory=${SPARK_DRIVER_MEMORY}
-      --conf spark.executor.cores=${SPARK_EXECUTOR_CORES}
-      --conf spark.driver.cores=${SPARK_DRIVER_CORES}
-      --conf spark.sql.streaming.checkpointLocation=${SPARK_SQL_STREAMING_CHECKPOINTLOCATION}
+      --conf spark.hadoop.dfs.client.use.datanode.hostname=true
+      --conf spark.hadoop.dfs.namenode.rpc-address=namenode:8020
+      --conf spark.hadoop.dfs.namenode.http-address=0.0.0.0:50070
+      --conf spark.hadoop.dfs.permissions.enabled=false
+      --conf spark.hadoop.dfs.namenode.datanode.registration.ip-hostname-check=false
+      --conf spark.hadoop.dfs.webhdfs.enabled=true
+      --conf spark.hadoop.dfs.client.read.shortcircuit=true
+      --conf spark.hadoop.dfs.domain.socket.path=/var/lib/hadoop-hdfs/dn_socket
       --class com.sparkml.SparkMLJob
-      /opt/spark-app/spark-job-fat.jar    
+      /opt/spark-app/spark-job-fat.jar
     # deploy:
     #   resources:
     #     limits:
