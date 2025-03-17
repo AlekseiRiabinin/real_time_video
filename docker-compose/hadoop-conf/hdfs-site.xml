@@ -1,48 +1,78 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
 <configuration>
     <property>
         <name>dfs.replication</name>
         <value>1</value>
     </property>
+
     <property>
         <name>dfs.namenode.name.dir</name>
         <value>/hadoop/dfs/name</value>
     </property>
+
     <property>
         <name>dfs.datanode.data.dir</name>
         <value>/hadoop/dfs/data</value>
     </property>
+
+
     <property>
         <name>dfs.permissions.enabled</name>
         <value>false</value>
     </property>
+
     <property>
         <name>dfs.namenode.datanode.registration.ip-hostname-check</name>
         <value>false</value>
     </property>
+
     <property>
         <name>dfs.webhdfs.enabled</name>
         <value>true</value>
     </property>
+
     <property>
-        <name>dfs.namenode.rpc-address</name>
-        <value>namenode:8020</value>
+        <name>fs.trash.interval</name>
+        <value>1440</value>
     </property>
+
     <property>
         <name>dfs.namenode.http-address</name>
         <value>0.0.0.0:50070</value>
     </property>
+
     <property>
-        <name>dfs.client.use.datanode.hostname</name>
-        <value>true</value>
+        <name>dfs.namenode.https-address</name>
+        <value>0.0.0.0:50470</value>
     </property>
+
+    <property>
+        <name>dfs.datanode.http.address</name>
+        <value>0.0.0.0:50075</value>
+    </property>
+
+    <property>
+        <name>dfs.datanode.https.address</name>
+        <value>0.0.0.0:50475</value>
+    </property>
+
     <property>
         <name>dfs.client.read.shortcircuit</name>
-        <value>true</value>
+        <value>false</value>
     </property>
+
     <property>
         <name>dfs.domain.socket.path</name>
-        <value>/var/lib/hadoop-hdfs/dn_socket</value>
+        <value></value>
     </property>
+
+    <!-- <property>
+        <name>dfs.namenode.handler.count</name>
+        <value>10</value>
+    </property> -->
+
+    <!-- <property>
+        <name>dfs.datanode.balance.bandwidthPerSec</name>
+        <value>1048576</value>
+    </property> -->
 </configuration>

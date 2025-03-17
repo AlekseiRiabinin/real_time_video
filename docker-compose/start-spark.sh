@@ -54,6 +54,24 @@ upload_videos_to_hdfs() {
     done
 }
 
+# Function to check if HDFS is ready
+check_hdfs_ready() {
+    log "Waiting for HDFS to start..."
+    max_retries=20
+    retry_count=0
+    while ! docker exec namenode hdfs dfsadmin -report >/dev/null 2>&1; do
+        log "HDFS is not ready yet. Waiting..."
+        sleep 10
+        retry_count=$((retry_count + 1))
+        if [ $retry_count -ge $max_retries ]; then
+            log "HDFS failed to start after $max_retries attempts. Exiting."
+            docker compose -f "$DOCKER_COMPOSE_FILE" logs namenode datanode
+            exit 1
+        fi
+    done
+    log "HDFS is ready."
+}
+
 # Function to check if Spark Master is ready
 check_spark_master_ready() {
     log "Waiting for Spark Master to start..."
@@ -136,6 +154,9 @@ docker compose -f "$DOCKER_COMPOSE_FILE" up -d namenode datanode
 # Check NameNode and cluster ID
 check_namenode_is_formatted
 check_cluster_id_mismatch
+
+# Wait for HDFS to be ready
+check_hdfs_ready
 
 # Wait for HDFS to be ready
 log "Waiting for HDFS to start..."

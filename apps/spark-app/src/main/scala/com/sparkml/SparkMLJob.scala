@@ -74,6 +74,9 @@ object SparkMLJob {
     logger.info("Initializing HDFS FileSystem...")
     try {
       val fs = FileSystem.get(hadoopConf)
+      while (!fs.exists(new Path("/"))) {
+        Thread.sleep(5000) // Wait for HDFS to be ready
+      }
       logger.info("HDFS FileSystem initialized successfully")
 
       // Copy model from HDFS to local filesystem

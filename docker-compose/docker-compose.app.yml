@@ -17,6 +17,7 @@ services:
     command: ["hdfs", "namenode"]
     user: "hadoop"
     volumes:
+      - ./hadoop-conf:/usr/local/hadoop/etc/hadoop
       - namenode-data:/hadoop/dfs/name
       - namenode-logs:/usr/local/hadoop/logs
     ports:
@@ -43,6 +44,7 @@ services:
     command: ["hdfs", "datanode"]
     user: "hadoop"
     volumes:
+      - ./hadoop-conf:/usr/local/hadoop/etc/hadoop
       - datanode-data:/hadoop/dfs/data
       - datanode-logs:/usr/local/hadoop/logs
     ports:
@@ -257,7 +259,7 @@ services:
       - HADOOP_USER_NAME=hadoop
     volumes:
       - ./ivy2:/opt/bitnami/spark/.ivy2
-      - ./hadoop-conf:/opt/hadoop/etc/hadoop
+      - ./hadoop-conf:/opt/bitnami/spark/conf
     depends_on:
       - spark-master
       - namenode
@@ -274,8 +276,7 @@ services:
       --conf spark.hadoop.dfs.permissions.enabled=false
       --conf spark.hadoop.dfs.namenode.datanode.registration.ip-hostname-check=false
       --conf spark.hadoop.dfs.webhdfs.enabled=true
-      --conf spark.hadoop.dfs.client.read.shortcircuit=true
-      --conf spark.hadoop.dfs.domain.socket.path=/var/lib/hadoop-hdfs/dn_socket
+      --conf spark.hadoop.dfs.client.read.shortcircuit=false
       --class com.sparkml.SparkMLJob
       /opt/spark-app/spark-job-fat.jar
     # deploy:
@@ -429,4 +430,4 @@ volumes:
   grafana-storage:
     name: grafana-storage
   prometheus-data:
-    name: prometheus-data
+    name: prometheus-d

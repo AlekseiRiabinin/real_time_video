@@ -33,12 +33,11 @@ RUN mkdir -p /hadoop/dfs/data && \
     mkdir -p /tmp/hadoop && \
     mkdir -p /var/lib/hadoop-hdfs && \
     chown -R hadoop:hadoop /hadoop && \
-    chown -R hadoop:hadoop /tmp && \
     chown -R hadoop:hadoop /var/lib/hadoop-hdfs
 
-# Copy configuration files
-COPY ./core-site.xml $HADOOP_HOME/etc/hadoop/core-site.xml
-COPY ./hdfs-site.xml $HADOOP_HOME/etc/hadoop/hdfs-site.xml
+# # Copy configuration files
+# COPY ./core-site.xml $HADOOP_HOME/etc/hadoop/core-site.xml
+# COPY ./hdfs-site.xml $HADOOP_HOME/etc/hadoop/hdfs-site.xml
 
 # Switch to hadoop user
 USER hadoop

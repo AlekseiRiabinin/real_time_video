@@ -193,6 +193,10 @@ upload_videos_to_hdfs
 log "Verifying video files in HDFS..."
 docker exec -it namenode hdfs dfs -ls /videos
 
+# Create /models directory in HDFS if it doesn't exist
+log "Creating /models directory in HDFS..."
+docker exec -it namenode hdfs dfs -mkdir -p /models
+
 # Copy the model to HDFS
 log "Checking if the model is already in HDFS..."
 if docker exec -it $NAMENODE_CONTAINER hdfs dfs -test -e $HDFS_MODEL_PATH; then
@@ -202,7 +206,7 @@ else
 
     # Copy the model to the namenode container's local filesystem
     log "Copying the model to the namenode container..."
-    if ! docker cp /home/aleksei/Projects/real_time_video/apps/spark-ml/models/saved_model namenode:/tmp/saved_model; then
+    if ! docker cp ./models/saved_model namenode:/tmp/saved_model; then
         log "Error: Failed to copy the model to the namenode container."
         exit 1
     else

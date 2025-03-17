@@ -31,12 +31,14 @@ RUN useradd -m -s /bin/bash hadoop && \
 # Create necessary directories
 RUN mkdir -p /hadoop/dfs/name && \
     mkdir -p /tmp/hadoop && \
+    mkdir -p /var/lib/hadoop-hdfs && \
     chown -R hadoop:hadoop /hadoop && \
-    chown -R hadoop:hadoop /tmp
+    chown -R hadoop:hadoop /tmp && \
+    chown -R hadoop:hadoop /var/lib/hadoop-hdfs
 
-# Copy configuration files
-COPY ./core-site.xml $HADOOP_HOME/etc/hadoop/core-site.xml
-COPY ./hdfs-site.xml $HADOOP_HOME/etc/hadoop/hdfs-site.xml
+# # Copy configuration files
+# COPY ./core-site.xml $HADOOP_HOME/etc/hadoop/core-site.xml
+# COPY ./hdfs-site.xml $HADOOP_HOME/etc/hadoop/hdfs-site.xml
 
 # Switch to hadoop user
 USER hadoop
@@ -44,7 +46,7 @@ USER hadoop
 # Expose ports
 EXPOSE 50070 8020
 
-# Command to run DataNode
+# Command to run NameNode
 CMD ["hdfs", "namenode"]
 
 # # Build the image
