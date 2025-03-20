@@ -1,4 +1,3 @@
-# Use a pre-built base image with Java 17
 FROM eclipse-temurin:17-jdk
 USER root
 
@@ -35,15 +34,11 @@ RUN mkdir -p /hadoop/dfs/data && \
     chown -R hadoop:hadoop /hadoop && \
     chown -R hadoop:hadoop /var/lib/hadoop-hdfs
 
-# # Copy configuration files
-# COPY ./core-site.xml $HADOOP_HOME/etc/hadoop/core-site.xml
-# COPY ./hdfs-site.xml $HADOOP_HOME/etc/hadoop/hdfs-site.xml
-
 # Switch to hadoop user
 USER hadoop
 
 # Expose ports
-EXPOSE 50075 1004 1006
+EXPOSE 9864 1004 1006
 
 # Command to run DataNode
 CMD ["hdfs", "datanode"]

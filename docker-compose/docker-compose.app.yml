@@ -11,8 +11,7 @@ services:
       - CORE_CONF_hadoop_proxyuser_hue_hosts=*
       - CORE_CONF_hadoop_proxyuser_hue_groups=*
       - HDFS_CONF_dfs_replication=1
-      - HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check=false
-      - HDFS_CONF_dfs_webhdfs_enabled=true
+      - HDFS_CONF_dfs_webhdfs_enabled=false
       - HDFS_CONF_dfs_permissions_enabled=false
     command: ["hdfs", "namenode"]
     user: "hadoop"
@@ -21,7 +20,7 @@ services:
       - namenode-data:/hadoop/dfs/name
       - namenode-logs:/usr/local/hadoop/logs
     ports:
-      - "50070:50070"  # NameNode web UI
+      - "9870:9870"    # NameNode web UI
       - "8020:8020"    # HDFS port
     networks:
       - kafka-net
@@ -48,7 +47,7 @@ services:
       - datanode-data:/hadoop/dfs/data
       - datanode-logs:/usr/local/hadoop/logs
     ports:
-      - "50075:50075"  # DataNode web UI
+      - "9864:9864"    # DataNode web UI
       - "1004:1004"    # DataNode auxiliary port
       - "1006:1006"    # DataNode auxiliary port
     depends_on:
@@ -257,12 +256,15 @@ services:
       - SPARK_HADOOP_FS_DEFAULTFS=hdfs://namenode:8020
       - MODEL_PATH=/opt/spark-apps/models/saved_model
       - HADOOP_USER_NAME=hadoop
+      - HADOOP_SECURITY_AUTHENTICATION=simple
+      - HADOOP_SECURITY_AUTHORIZATION=false
     volumes:
       - ./ivy2:/opt/bitnami/spark/.ivy2
       - ./hadoop-conf:/opt/bitnami/spark/conf
     depends_on:
       - spark-master
       - namenode
+      - datanode
     networks:
       - kafka-net
     restart: on-failure
@@ -270,12 +272,14 @@ services:
       /opt/bitnami/spark/bin/spark-submit
       --master ${SPARK_MASTER_URL}
       --conf spark.hadoop.fs.defaultFS=${SPARK_HADOOP_FS_DEFAULTFS}
+      --conf spark.hadoop.hadoop.security.authentication=simple
+      --conf spark.hadoop.hadoop.security.authorization=false
       --conf spark.hadoop.dfs.client.use.datanode.hostname=true
       --conf spark.hadoop.dfs.namenode.rpc-address=namenode:8020
-      --conf spark.hadoop.dfs.namenode.http-address=0.0.0.0:50070
+      --conf spark.hadoop.dfs.namenode.http-address=namenode:9870
       --conf spark.hadoop.dfs.permissions.enabled=false
       --conf spark.hadoop.dfs.namenode.datanode.registration.ip-hostname-check=false
-      --conf spark.hadoop.dfs.webhdfs.enabled=true
+      --conf spark.hadoop.dfs.webhdfs.enabled=false
       --conf spark.hadoop.dfs.client.read.shortcircuit=false
       --class com.sparkml.SparkMLJob
       /opt/spark-app/spark-job-fat.jar

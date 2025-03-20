@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <configuration>
     <property>
         <name>fs.defaultFS</name>
@@ -12,11 +11,21 @@
 
     <property>
         <name>hadoop.security.authentication</name>
-        <value>simple</value>  <!-- Disable Kerberos -->
+        <value>simple</value>
     </property>
 
     <property>
         <name>hadoop.security.authorization</name>
-        <value>false</value>   <!-- Disable authorization -->
+        <value>false</value>
+    </property>
+
+    <property>
+        <name>hadoop.security.group.mapping</name>
+        <value>org.apache.hadoop.security.JniBasedUnixGroupsMappingWithFallback</value>
+    </property>
+
+    <property>
+        <name>hadoop.security.groups.cache.secs</name>
+        <value>0</value>
     </property>
 </configuration>

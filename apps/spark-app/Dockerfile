@@ -5,10 +5,6 @@ FROM bitnami/spark:3.5.4
 ENV SPARK_MASTER_URL="spark://spark-master:7077"
 ENV SPARK_HADOOP_FS_DEFAULTFS="hdfs://namenode:8020"
 
-# # Create directories
-# RUN mkdir -p /opt/bitnami/spark/.ivy2 && \
-#     mkdir -p /opt/bitnami/spark/conf
-
 # Copy configuration files into the conf directory
 COPY spark-defaults.conf /opt/bitnami/spark/conf/spark-defaults.conf
 
