@@ -102,6 +102,35 @@ check_port_availability() {
     fi
 }
 
+# Function to check if HDFS is ready
+check_hdfs_ready() {
+    log "Waiting for HDFS to start..."
+    max_retries=30
+    retry_count=0
+    sleep 10
+    while ! docker exec namenode hdfs dfsadmin -report >/dev/null 2>&1; do
+        log "HDFS is not ready yet. Waiting..."
+        sleep 5
+        retry_count=$((retry_count + 1))
+        if [ $retry_count -ge $max_retries ]; then
+            log "HDFS failed to start after $max_retries attempts. Exiting."
+            docker compose -f "$DOCKER_COMPOSE_FILE" logs namenode datanode
+            exit 1
+        fi
+    done
+    log "HDFS is ready."
+
+    # Disable safe mode if it is enabled
+    log "Checking if HDFS is in safe mode..."
+    if docker exec namenode hdfs dfsadmin -safemode get | grep -q "ON"; then
+        log "HDFS is in safe mode. Disabling safe mode..."
+        docker exec -it namenode hdfs dfsadmin -safemode leave
+        log "Safe mode is now OFF."
+    else
+        log "HDFS is not in safe mode."
+    fi
+}
+
 # Function to check and upload video files to HDFS
 upload_videos_to_hdfs() {
     log "Checking if video files exist in HDFS..."
@@ -112,8 +141,8 @@ upload_videos_to_hdfs() {
 
             # Check if the file exists locally
             if [ ! -f "./videos/$video_file" ]; then
-                log "Error: $video_file not found in the local directory. Please ensure the file exists."
-                exit 1
+                log "Warning: $video_file not found in the local directory. Skipping upload."
+                continue
             fi
 
             # Copy the file to the namenode container
@@ -139,24 +168,18 @@ start_hdfs_services() {
     check_cluster_id_mismatch
 
     # Wait for HDFS to be ready
-    log "Waiting for HDFS to start..."
-    max_retries=10
-    retry_count=0
-    while ! docker exec namenode hdfs dfsadmin -report >/dev/null 2>&1; do
-        log "HDFS is not ready yet. Waiting..."
-        sleep 10
-        retry_count=$((retry_count + 1))
-        if [ $retry_count -ge $max_retries ]; then
-            log "HDFS failed to start after $max_retries attempts. Exiting."
-            docker compose -f "$DOCKER_COMPOSE_FILE" logs namenode datanode
-            exit 1
-        fi
-    done
-    log "HDFS is ready."
+    check_hdfs_ready
 
-    # Create /videos directory in HDFS if it doesn't exist
     log "Creating /videos directory in HDFS..."
-    docker exec -it namenode hdfs dfs -mkdir -p /videos
+    if ! docker exec -it namenode hdfs dfs -test -d /videos; then
+        docker exec -it namenode hdfs dfs -mkdir -p /videos
+    fi
+
+    log "Creating /videos/checkpoint directory in HDFS..."
+    if ! docker exec -it namenode hdfs dfs -test -d /videos/checkpoint; then
+        docker exec -it namenode hdfs dfs -mkdir -p /videos/checkpoint
+        docker exec -it namenode hdfs dfs -chmod -R 777 /videos/checkpoint
+    fi
 
     # Upload video files to HDFS if they don't exist
     upload_videos_to_hdfs
@@ -279,13 +302,6 @@ start_flink_services() {
     fi
 }
 
-# Load environment variables
-load_environment_variables() {
-    if [ -f .env ]; then
-        export $(cat .env | xargs)
-    fi
-}
-
 # Main function to orchestrate the script
 main() {
     if [ $# -ne 1 ]; then
@@ -306,9 +322,6 @@ main() {
         log "Error: Docker Compose file not found at $DOCKER_COMPOSE_FILE."
         exit 1
     fi
-
-    # Load environment variables
-    load_environment_variables
 
     # Start HDFS services
     start_hdfs_services

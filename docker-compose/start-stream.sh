@@ -27,6 +27,35 @@ check_cluster_id_mismatch() {
     fi
 }
 
+# Function to check if HDFS is ready
+check_hdfs_ready() {
+    log "Waiting for HDFS to start..."
+    max_retries=30
+    retry_count=0
+    sleep 10
+    while ! docker exec namenode hdfs dfsadmin -report >/dev/null 2>&1; do
+        log "HDFS is not ready yet. Waiting..."
+        sleep 5
+        retry_count=$((retry_count + 1))
+        if [ $retry_count -ge $max_retries ]; then
+            log "HDFS failed to start after $max_retries attempts. Exiting."
+            docker compose -f "$DOCKER_COMPOSE_FILE" logs namenode datanode
+            exit 1
+        fi
+    done
+    log "HDFS is ready."
+
+    # Disable safe mode if it is enabled
+    log "Checking if HDFS is in safe mode..."
+    if docker exec namenode hdfs dfsadmin -safemode get | grep -q "ON"; then
+        log "HDFS is in safe mode. Disabling safe mode..."
+        docker exec -it namenode hdfs dfsadmin -safemode leave
+        log "Safe mode is now OFF."
+    else
+        log "HDFS is not in safe mode."
+    fi
+}
+
 # Function to start a specific producer
 start_producer() {
     local producer_type=$1
@@ -112,8 +141,8 @@ upload_videos_to_hdfs() {
 
             # Check if the file exists locally
             if [ ! -f "./videos/$video_file" ]; then
-                log "Error: $video_file not found in the local directory. Please ensure the file exists."
-                exit 1
+                log "Warning: $video_file not found in the local directory. Skipping upload."
+                continue
             fi
 
             # Copy the file to the namenode container
@@ -139,24 +168,18 @@ start_hdfs_services() {
     check_cluster_id_mismatch
 
     # Wait for HDFS to be ready
-    log "Waiting for HDFS to start..."
-    max_retries=10
-    retry_count=0
-    while ! docker exec namenode hdfs dfsadmin -report >/dev/null 2>&1; do
-        log "HDFS is not ready yet. Waiting..."
-        sleep 10
-        retry_count=$((retry_count + 1))
-        if [ $retry_count -ge $max_retries ]; then
-            log "HDFS failed to start after $max_retries attempts. Exiting."
-            docker compose -f "$DOCKER_COMPOSE_FILE" logs namenode datanode
-            exit 1
-        fi
-    done
-    log "HDFS is ready."
+    check_hdfs_ready
 
-    # Create /videos directory in HDFS if it doesn't exist
     log "Creating /videos directory in HDFS..."
-    docker exec -it namenode hdfs dfs -mkdir -p /videos
+    if ! docker exec -it namenode hdfs dfs -test -d /videos; then
+        docker exec -it namenode hdfs dfs -mkdir -p /videos
+    fi
+
+    log "Creating /videos/checkpoint directory in HDFS..."
+    if ! docker exec -it namenode hdfs dfs -test -d /videos/checkpoint; then
+        docker exec -it namenode hdfs dfs -mkdir -p /videos/checkpoint
+        docker exec -it namenode hdfs dfs -chmod -R 777 /videos/checkpoint
+    fi
 
     # Upload video files to HDFS if they don't exist
     upload_videos_to_hdfs
@@ -164,10 +187,6 @@ start_hdfs_services() {
     # Verify the files are in HDFS
     log "Verifying video files in HDFS..."
     docker exec -it namenode hdfs dfs -ls /videos
-
-    # Create /models directory in HDFS if it doesn't exist
-    log "Creating /models directory in HDFS..."
-    docker exec -it namenode hdfs dfs -mkdir -p /models
 
     # Copy the model to HDFS
     log "Checking if the model is already in HDFS..."
@@ -178,7 +197,7 @@ start_hdfs_services() {
 
         # Copy the model to the namenode container's local filesystem
         log "Copying the model to the namenode container..."
-        if ! docker cp ./models/saved_model namenode:/tmp/saved_model; then
+        if ! docker cp "$LOCAL_MODEL_PATH" namenode:/tmp/saved_model; then
             log "Error: Failed to copy the model to the namenode container."
             exit 1
         else
@@ -255,13 +274,6 @@ start_monitoring_services() {
     docker compose -f "$DOCKER_COMPOSE_FILE" up -d prometheus grafana
 }
 
-# Load environment variables
-load_environment_variables() {
-    if [ -f .env ]; then
-        export $(cat .env | xargs)
-    fi
-}
-
 # Main function to orchestrate the script
 main() {
     if [ $# -ne 1 ]; then
@@ -282,9 +294,6 @@ main() {
         log "Error: Docker Compose file not found at $DOCKER_COMPOSE_FILE."
         exit 1
     fi
-
-    # Load environment variables
-    load_environment_variables
 
     # Start HDFS services
     start_hdfs_services

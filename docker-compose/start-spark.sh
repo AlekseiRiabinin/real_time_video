@@ -215,13 +215,6 @@ start_spark_services() {
     check_spark_job_ready
 }
 
-# Load environment variables
-load_environment_variables() {
-    if [ -f .env ]; then
-        export $(cat .env | xargs)
-    fi
-}
-
 # Main function to orchestrate the script
 main() {
     # Load environment variables

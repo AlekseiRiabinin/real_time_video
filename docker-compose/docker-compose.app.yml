@@ -4,6 +4,9 @@ services:
     image: alexflames77/custom-hadoop-namenode:3.3.6-java17
     container_name: namenode
     hostname: namenode
+    ports:
+      - "9870:9870"    # NameNode web UI
+      - "8020:8020"    # HDFS port
     environment:
       - CLUSTER_NAME=hadoopvideo
       - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
@@ -19,47 +22,34 @@ services:
       - ./hadoop-conf:/usr/local/hadoop/etc/hadoop
       - namenode-data:/hadoop/dfs/name
       - namenode-logs:/usr/local/hadoop/logs
-    ports:
-      - "9870:9870"    # NameNode web UI
-      - "8020:8020"    # HDFS port
     networks:
       - kafka-net
     restart: always
-    # deploy:
-    #   resources:
-    #     limits:
-    #       cpus: "1"
-    #       memory: "2g"
 
   # HDFS Datanode
   datanode:
     image: alexflames77/custom-hadoop-datanode:3.3.6-java17
     container_name: datanode
     hostname: datanode
+    ports:
+      - "9864:9864"    # DataNode web UI
+      - "1004:1004"    # DataNode auxiliary port
+      - "1006:1006"    # DataNode auxiliary port
     environment:
       - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
       - HDFS_CONF_dfs_datanode_data_dir=/hadoop/dfs/data
       - HDFS_CONF_dfs_permissions_enabled=false
     command: ["hdfs", "datanode"]
     user: "hadoop"
+    depends_on:
+      - namenode
     volumes:
       - ./hadoop-conf:/usr/local/hadoop/etc/hadoop
       - datanode-data:/hadoop/dfs/data
       - datanode-logs:/usr/local/hadoop/logs
-    ports:
-      - "9864:9864"    # DataNode web UI
-      - "1004:1004"    # DataNode auxiliary port
-      - "1006:1006"    # DataNode auxiliary port
-    depends_on:
-      - namenode
     networks:
       - kafka-net
     restart: always
-    # deploy:
-    #   resources:
-    #     limits:
-    #       cpus: "1"
-    #       memory: "2g"
 
   # Kafka Brokers
   kafka-1:
@@ -77,11 +67,7 @@ services:
     networks:
       - kafka-net
     restart: always
-    # deploy:
-    #   resources:
-    #     limits:
-    #       cpus: "1"
-    #       memory: "2g"
+
   kafka-2:
     image: bitnami/kafka:3.8.0
     container_name: kafka-2
@@ -97,31 +83,21 @@ services:
     networks:
       - kafka-net
     restart: always
-    # deploy:
-    #   resources:
-    #     limits:
-    #       cpus: "1"
-    #       memory: "2g"
 
   # Kafka Service
   kafka-service:
     image: alexflames77/kafka_service:latest
     container_name: kafka-service
-    environment:
-      - BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
-    networks:
-      - kafka-net
     ports:
       - "9091:9091"
-    restart: always
-    # deploy:
-    #   resources:
-    #     limits:
-    #       cpus: "1"
-    #       memory: "2g"
+    environment:
+      - BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
     depends_on:
       - kafka-1
       - kafka-2
+    networks:
+      - kafka-net
+    restart: always
 
   # Flink JobManager
   jobmanager:
@@ -132,13 +108,13 @@ services:
       - "8081:8081"
       - "6123:6123"
       - "6124:6124"
-    command: jobmanager
     environment:
       - |
         FLINK_PROPERTIES=
         jobmanager.rpc.address: jobmanager
         taskmanager.numberOfTaskSlots: 2
         taskmanager.registration.timeout: 5 min
+    command: jobmanager
     networks:
       - kafka-net
     restart: always
@@ -153,17 +129,17 @@ services:
     image: flink:1.17.1
     container_name: taskmanager
     hostname: taskmanager
-    command: taskmanager
     environment:
       - |
         FLINK_PROPERTIES=
         jobmanager.rpc.address: jobmanager
         taskmanager.numberOfTaskSlots: 2
+    command: taskmanager
+    depends_on:
+      - jobmanager
     networks:
       - kafka-net
     restart: always
-    depends_on:
-      - jobmanager
     deploy:
       resources:
         limits:
@@ -177,7 +153,6 @@ services:
     environment:
       - FLINK_JOBMANAGER_HOST=jobmanager
       - FLINK_JOBMANAGER_PORT=8081
-      # - KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
     command: >
       /bin/bash -c "
       java 
@@ -187,25 +162,23 @@ services:
       --add-opens=java.base/java.nio=ALL-UNNAMED 
       --add-opens=java.base/sun.nio.ch=ALL-UNNAMED 
       "
-    networks:
-      - kafka-net
     depends_on:
       - jobmanager
       - taskmanager
       - kafka-1
       - kafka-2
+    networks:
+      - kafka-net
     restart: on-failure
-    # deploy:
-    #   resources:
-    #     limits:
-    #       cpus: "1"
-    #       memory: "2g"
 
   # Spark Master
   spark-master:
     image: bitnami/spark:3.5.4
     container_name: spark-master
     hostname: spark-master
+    ports:
+      - "7077:7077"
+      - "8080:8080"
     environment:
       - SPARK_MODE=master
       - SPARK_MASTER_URL=spark://spark-master:7077
@@ -213,17 +186,9 @@ services:
       - SPARK_RPC_ENCRYPTION_ENABLED=no
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
       - SPARK_SSL_ENABLED=no
-    ports:
-      - "7077:7077"
-      - "8080:8080"
     networks:
       - kafka-net
     restart: always
-    # deploy:
-    #   resources:
-    #     limits:
-    #       cpus: "1"
-    #       memory: "2g"
 
   # Spark Worker
   spark-worker:
@@ -241,11 +206,6 @@ services:
     networks:
       - kafka-net
     restart: always
-    # deploy:
-    #   resources:
-    #     limits:
-    #       cpus: "1"
-    #       memory: "2g"
 
   # Spark Job
   spark-job:
@@ -258,16 +218,6 @@ services:
       - HADOOP_USER_NAME=hadoop
       - HADOOP_SECURITY_AUTHENTICATION=simple
       - HADOOP_SECURITY_AUTHORIZATION=false
-    volumes:
-      - ./ivy2:/opt/bitnami/spark/.ivy2
-      - ./hadoop-conf:/opt/bitnami/spark/conf
-    depends_on:
-      - spark-master
-      - namenode
-      - datanode
-    networks:
-      - kafka-net
-    restart: on-failure
     command: >
       /opt/bitnami/spark/bin/spark-submit
       --master ${SPARK_MASTER_URL}
@@ -283,121 +233,121 @@ services:
       --conf spark.hadoop.dfs.client.read.shortcircuit=false
       --class com.sparkml.SparkMLJob
       /opt/spark-app/spark-job-fat.jar
-    # deploy:
-    #   resources:
-    #     limits:
-    #       cpus: "1"
-    #       memory: "2g"
+    depends_on:
+      - spark-master
+      - namenode
+      - datanode
+    volumes:
+      - ./ivy2:/opt/bitnami/spark/.ivy2
+      - ./hadoop-conf:/opt/bitnami/spark/conf
+    networks:
+      - kafka-net
+    restart: on-failure
 
   # Kafka Client
   kafka-client:
     image: alexflames77/kafka_client:latest
     container_name: kafka-client
+    labels:
+      - "producer.type=kafka"
+    ports:
+      - "9080:9080"
     environment:
       - BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
       - HDFS_URI=hdfs://namenode:8020
       - JAVA_OPTS=-Xmx2g -Xms1g
-    ports:
-      - "9080:9080"
-    networks:
-      - kafka-net
     depends_on:
       - namenode
       - kafka-1
       - kafka-2
+    networks:
+      - kafka-net
     restart: on-failure
-    labels:
-      - "producer.type=kafka"
 
   # Akka Client
   akka-client:
     image: alexflames77/akka_client:latest
     container_name: akka-client
-    environment:
-      - JAVA_OPTS=-Xmx2g -Xms1g
+    labels:
+      - "producer.type=akka"
     ports:
       - "9081:9081"
-    networks:
-      - kafka-net
+    environment:
+      - JAVA_OPTS=-Xmx2g -Xms1g
     depends_on:
       - namenode
       - kafka-1
       - kafka-2
+    networks:
+      - kafka-net
     restart: on-failure
-    labels:
-      - "producer.type=akka"
 
   # Cats Client
   cats-client:
     image: alexflames77/cats_client:latest
     container_name: cats-client
-    environment:
-      - JAVA_OPTS=-Xmx2g -Xms1g
+    labels:
+      - "producer.type=cats"
     ports:
       - "9082:9082"
-    networks:
-      - kafka-net
+    environment:
+      - JAVA_OPTS=-Xmx2g -Xms1g
     depends_on:
       - namenode
       - kafka-1
       - kafka-2
+    networks:
+      - kafka-net
     restart: on-failure
-    labels:
-      - "producer.type=cats"
 
   # FS2 Client
   fs2-client:
     image: alexflames77/fs2_client:latest
     container_name: fs2-client
-    environment:
-      - JAVA_OPTS=-Xmx2g -Xms1g
+    labels:
+      - "producer.type=fs2"
     ports:
       - "9083:9083"
-    networks:
-      - kafka-net
+    environment:
+      - JAVA_OPTS=-Xmx2g -Xms1g
     depends_on:
       - namenode
       - kafka-1
       - kafka-2
+    networks:
+      - kafka-net
     restart: on-failure
-    labels:
-      - "producer.type=fs2"
 
   # ZIO Client
   zio-client:
     image: alexflames77/zio_client:latest
     container_name: zio-client
-    environment:
-      - JAVA_OPTS=-Xmx2g -Xms1g
+    labels:
+      - "producer.type=zio"
     ports:
       - "9084:9084"
-    networks:
-      - kafka-net
+    environment:
+      - JAVA_OPTS=-Xmx2g -Xms1g
     depends_on:
       - namenode
       - kafka-1
       - kafka-2
+    networks:
+      - kafka-net
     restart: on-failure
-    labels:
-      - "producer.type=zio"
 
   # Prometheus
   prometheus:
     image: prom/prometheus
     container_name: prometheus
+    ports:
+      - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       -  prometheus-data:/prometheus
-    ports:
-      - "9090:9090"
     networks:
       - kafka-net
     restart: always
-    # deploy:
-    #   resources:
-    #     limits:
-    #       cpus: "1"
-    #       memory: "2g"
 
   # Grafana
   grafana:
@@ -412,11 +362,6 @@ services:
     networks:
       - kafka-net
     restart: always
-    # deploy:
-    #   resources:
-    #     limits:
-    #       cpus: "1"
-    #       memory: "2g"
 
 networks:
   kafka-net:
@@ -434,4 +379,4 @@ volumes:
   grafana-storage:
     name: grafana-storage
   prometheus-data:
-    name: prometheus-d
+    name: prometheus-data
