@@ -27,6 +27,79 @@ check_cluster_id_mismatch() {
     fi
 }
 
+# Function to check if HDFS is ready
+check_hdfs_ready() {
+    log "Waiting for HDFS to start..."
+    max_retries=30
+    retry_count=0
+    sleep 10
+    while ! docker exec namenode hdfs dfsadmin -report >/dev/null 2>&1; do
+        log "HDFS is not ready yet. Waiting..."
+        sleep 5
+        retry_count=$((retry_count + 1))
+        if [ $retry_count -ge $max_retries ]; then
+            log "HDFS failed to start after $max_retries attempts. Exiting."
+            docker compose -f "$DOCKER_COMPOSE_FILE" logs namenode datanode
+            exit 1
+        fi
+    done
+    log "HDFS is ready."
+
+    # Disable safe mode if it is enabled
+    log "Checking if HDFS is in safe mode..."
+    if docker exec namenode hdfs dfsadmin -safemode get | grep -q "ON"; then
+        log "HDFS is in safe mode. Disabling safe mode..."
+        docker exec -it namenode hdfs dfsadmin -safemode leave
+        log "Safe mode is now OFF."
+    else
+        log "HDFS is not in safe mode."
+    fi
+}
+
+# Function to upload the model to HDFS
+upload_model_to_hdfs() {
+    local local_model_path=$1
+    local hdfs_model_path=$2
+
+    log "Checking if the model is already in HDFS..."
+    if docker exec -it namenode hdfs dfs -test -e $hdfs_model_path; then
+        log "Model is already in HDFS. Skipping upload."
+        return 0
+    fi
+
+    log "Model not found in HDFS. Copying the model to HDFS..."
+
+    # Copy the model to the namenode container's local filesystem
+    log "Copying the model to the namenode container..."
+    if ! docker cp "$local_model_path" namenode:/tmp/saved_model; then
+        log "Error: Failed to copy the model to the namenode container."
+        return 1
+    else
+        log "Model copied to the namenode container successfully."
+    fi
+
+    # Create the /models directory if it doesn't exist
+    if ! docker exec -it namenode hdfs dfs -test -d /models; then
+        log "Creating /models directory in HDFS..."
+        docker exec -it namenode hdfs dfs -mkdir -p /models
+    fi
+
+    # Upload the model from the namenode container to HDFS
+    log "Uploading the model to HDFS..."
+    if docker exec -it namenode hdfs dfs -put /tmp/saved_model $hdfs_model_path; then
+        log "Model uploaded to HDFS successfully."
+    else
+        log "Error: Failed to upload the model to HDFS."
+        return 1
+    fi
+
+    # Clean up the temporary files in the namenode container
+    log "Cleaning up temporary files in the namenode container..."
+    docker exec -it --user root namenode rm -rf /tmp/saved_model
+
+    return 0
+}
+
 # Function to check and upload video files to HDFS
 upload_videos_to_hdfs() {
     log "Checking if video files exist in HDFS..."
@@ -54,32 +127,41 @@ upload_videos_to_hdfs() {
     done
 }
 
-# Function to check if HDFS is ready
-check_hdfs_ready() {
-    log "Waiting for HDFS to start..."
-    max_retries=30
-    retry_count=0
-    sleep 10
-    while ! docker exec namenode hdfs dfsadmin -report >/dev/null 2>&1; do
-        log "HDFS is not ready yet. Waiting..."
-        sleep 5
-        retry_count=$((retry_count + 1))
-        if [ $retry_count -ge $max_retries ]; then
-            log "HDFS failed to start after $max_retries attempts. Exiting."
-            docker compose -f "$DOCKER_COMPOSE_FILE" logs namenode datanode
-            exit 1
-        fi
-    done
-    log "HDFS is ready."
+# Function to start HDFS services
+start_hdfs_services() {
+    log "Starting HDFS services..."
+    docker compose -f "$DOCKER_COMPOSE_FILE" up -d namenode datanode
 
-    # Disable safe mode if it is enabled
-    log "Checking if HDFS is in safe mode..."
-    if docker exec namenode hdfs dfsadmin -safemode get | grep -q "ON"; then
-        log "HDFS is in safe mode. Disabling safe mode..."
-        docker exec -it namenode hdfs dfsadmin -safemode leave
-        log "Safe mode is now OFF."
-    else
-        log "HDFS is not in safe mode."
+    # Check NameNode and cluster ID
+    check_namenode_is_formatted
+    check_cluster_id_mismatch
+
+    # Wait for HDFS to be ready
+    check_hdfs_ready
+
+    log "Creating /videos directory in HDFS..."
+    if ! docker exec -it namenode hdfs dfs -test -d /videos; then
+        docker exec -it namenode hdfs dfs -mkdir -p /videos
+    fi
+
+    log "Creating /videos/checkpoint directory in HDFS..."
+    if ! docker exec -it namenode hdfs dfs -test -d /videos/checkpoint; then
+        docker exec -it namenode hdfs dfs -mkdir -p /videos/checkpoint
+        docker exec -it namenode hdfs dfs -chmod -R 777 /videos/checkpoint
+    fi
+
+    # Upload video files to HDFS if they don't exist
+    upload_videos_to_hdfs
+
+    # Verify the files are in HDFS
+    log "Verifying video files in HDFS..."
+    docker exec -it namenode hdfs dfs -ls /videos
+
+    # Upload the model to HDFS
+    upload_model_to_hdfs "$LOCAL_MODEL_PATH" "$HDFS_MODEL_PATH"
+    if [ $? -ne 0 ]; then
+        log "Error: Failed to upload the model to HDFS."
+        exit 1
     fi
 }
 
@@ -137,67 +219,6 @@ check_spark_job_ready() {
     log "Spark job is running."
 }
 
-# Function to start HDFS services
-start_hdfs_services() {
-    log "Starting HDFS services..."
-    docker compose -f "$DOCKER_COMPOSE_FILE" up -d namenode datanode
-
-    # Check NameNode and cluster ID
-    check_namenode_is_formatted
-    check_cluster_id_mismatch
-
-    # Wait for HDFS to be ready
-    check_hdfs_ready
-
-    log "Creating /videos directory in HDFS..."
-    if ! docker exec -it namenode hdfs dfs -test -d /videos; then
-        docker exec -it namenode hdfs dfs -mkdir -p /videos
-    fi
-
-    log "Creating /videos/checkpoint directory in HDFS..."
-    if ! docker exec -it namenode hdfs dfs -test -d /videos/checkpoint; then
-        docker exec -it namenode hdfs dfs -mkdir -p /videos/checkpoint
-        docker exec -it namenode hdfs dfs -chmod -R 777 /videos/checkpoint
-    fi
-
-    # Upload video files to HDFS if they don't exist
-    upload_videos_to_hdfs
-
-    # Verify the files are in HDFS
-    log "Verifying video files in HDFS..."
-    docker exec -it namenode hdfs dfs -ls /videos
-
-    # Copy the model to HDFS
-    log "Checking if the model is already in HDFS..."
-    if docker exec -it $NAMENODE_CONTAINER hdfs dfs -test -e $HDFS_MODEL_PATH; then
-        log "Model is already in HDFS. Skipping copy."
-    else
-        log "Model not found in HDFS. Copying the model to HDFS..."
-
-        # Copy the model to the namenode container's local filesystem
-        log "Copying the model to the namenode container..."
-        if ! docker cp "$LOCAL_MODEL_PATH" namenode:/tmp/saved_model; then
-            log "Error: Failed to copy the model to the namenode container."
-            exit 1
-        else
-            log "Model copied to the namenode container successfully."
-        fi
-
-        # Upload the model from the namenode container to HDFS
-        log "Uploading the model to HDFS..."
-        if docker exec -it namenode hdfs dfs -put /tmp/saved_model /models/saved_model; then
-            log "Model uploaded to HDFS successfully."
-        else
-            log "Error: Failed to upload the model to HDFS."
-            exit 1
-        fi
-
-        # Clean up the temporary files in the namenode container
-        log "Cleaning up temporary files in the namenode container..."
-        docker exec -it --user root namenode rm -rf /tmp/saved_model
-    fi
-}
-
 # Function to start Spark services
 start_spark_services() {
     log "Starting Spark Master and Worker..."
@@ -217,8 +238,6 @@ start_spark_services() {
 
 # Main function to orchestrate the script
 main() {
-    # Load environment variables
-
     # Paths and variables
     DOCKER_COMPOSE_FILE="/home/aleksei/Projects/real_time_video/docker-compose/docker-compose.app.yml"
     LOCAL_MODEL_PATH="/home/aleksei/Projects/real_time_video/apps/spark-ml/models/saved_model"

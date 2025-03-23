@@ -56,7 +56,7 @@ services:
     image: bitnami/kafka:3.8.0
     container_name: kafka-1
     ports:
-      - "9092:9092"
+      - "9092:9092"    # Kafka-1 communication port
     environment:
       - KAFKA_ENABLE_KRAFT=yes
       - KAFKA_KRAFT_CLUSTER_ID=d8ce1515-401e-44d4-a444-1b6dba479047
@@ -72,7 +72,7 @@ services:
     image: bitnami/kafka:3.8.0
     container_name: kafka-2
     ports:
-      - "9095:9095"
+      - "9095:9095"    # Kafka-2 communication port
     environment:
       - KAFKA_ENABLE_KRAFT=yes
       - KAFKA_KRAFT_CLUSTER_ID=d8ce1515-401e-44d4-a444-1b6dba479047
@@ -89,7 +89,7 @@ services:
     image: alexflames77/kafka_service:latest
     container_name: kafka-service
     ports:
-      - "9091:9091"
+      - "9091:9091"    # Kafka Service communication port
     environment:
       - BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
     depends_on:
@@ -105,9 +105,9 @@ services:
     container_name: jobmanager
     hostname: jobmanager
     ports:
-      - "8081:8081"
-      - "6123:6123"
-      - "6124:6124"
+      - "8081:8081"    # Web UI 
+      - "6123:6123"    # RPC (Remote Procedure Call)
+      - "6124:6124"    # Blob Server port
     environment:
       - |
         FLINK_PROPERTIES=
@@ -177,8 +177,8 @@ services:
     container_name: spark-master
     hostname: spark-master
     ports:
-      - "7077:7077"
-      - "8080:8080"
+      - "7077:7077"    # Spark communication port
+      - "8080:8080"    # Spark Master Web UI
     environment:
       - SPARK_MODE=master
       - SPARK_MASTER_URL=spark://spark-master:7077
@@ -251,7 +251,7 @@ services:
     labels:
       - "producer.type=kafka"
     ports:
-      - "9080:9080"
+      - "9080:9080"    # Kafka Client communication port
     environment:
       - BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
       - HDFS_URI=hdfs://namenode:8020
@@ -271,7 +271,7 @@ services:
     labels:
       - "producer.type=akka"
     ports:
-      - "9081:9081"
+      - "9081:9081"    # Akka Client communication port
     environment:
       - JAVA_OPTS=-Xmx2g -Xms1g
     depends_on:
@@ -289,7 +289,7 @@ services:
     labels:
       - "producer.type=cats"
     ports:
-      - "9082:9082"
+      - "9082:9082"    # Cats Client communication port
     environment:
       - JAVA_OPTS=-Xmx2g -Xms1g
     depends_on:
@@ -307,7 +307,7 @@ services:
     labels:
       - "producer.type=fs2"
     ports:
-      - "9083:9083"
+      - "9083:9083"    # FS2 Client communication port
     environment:
       - JAVA_OPTS=-Xmx2g -Xms1g
     depends_on:
@@ -325,7 +325,7 @@ services:
     labels:
       - "producer.type=zio"
     ports:
-      - "9084:9084"
+      - "9084:9084"    # ZIO Client communication port
     environment:
       - JAVA_OPTS=-Xmx2g -Xms1g
     depends_on:
@@ -341,7 +341,7 @@ services:
     image: prom/prometheus
     container_name: prometheus
     ports:
-      - "9090:9090"
+      - "9090:9090"    # Prometheus web UI and API
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       -  prometheus-data:/prometheus
@@ -354,7 +354,7 @@ services:
     image: grafana/grafana
     container_name: grafana
     ports:
-      - "3000:3000"
+      - "3000:3000"    # Grafana web UI
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     volumes:

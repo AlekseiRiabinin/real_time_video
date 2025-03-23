@@ -56,6 +56,88 @@ check_hdfs_ready() {
     fi
 }
 
+# Function to upload the model to HDFS
+upload_model_to_hdfs() {
+    local local_model_path=$1
+    local hdfs_model_path=$2
+
+    log "Checking if the model is already in HDFS..."
+    if docker exec -it namenode hdfs dfs -test -e $hdfs_model_path; then
+        log "Model is already in HDFS. Skipping upload."
+        return 0
+    fi
+
+    log "Model not found in HDFS. Copying the model to HDFS..."
+
+    # Copy the model to the namenode container's local filesystem
+    log "Copying the model to the namenode container..."
+    if ! docker cp "$local_model_path" namenode:/tmp/saved_model; then
+        log "Error: Failed to copy the model to the namenode container."
+        return 1
+    else
+        log "Model copied to the namenode container successfully."
+    fi
+
+    # Create the /models directory if it doesn't exist
+    if ! docker exec -it namenode hdfs dfs -test -d /models; then
+        log "Creating /models directory in HDFS..."
+        docker exec -it namenode hdfs dfs -mkdir -p /models
+    fi
+
+    # Upload the model from the namenode container to HDFS
+    log "Uploading the model to HDFS..."
+    if docker exec -it namenode hdfs dfs -put /tmp/saved_model $hdfs_model_path; then
+        log "Model uploaded to HDFS successfully."
+    else
+        log "Error: Failed to upload the model to HDFS."
+        return 1
+    fi
+
+    # Clean up the temporary files in the namenode container
+    log "Cleaning up temporary files in the namenode container..."
+    docker exec -it --user root namenode rm -rf /tmp/saved_model
+
+    return 0
+}
+
+# Function to start HDFS services
+start_hdfs_services() {
+    log "Starting HDFS services..."
+    docker compose -f "$DOCKER_COMPOSE_FILE" up -d namenode datanode
+
+    # Check NameNode and cluster ID
+    check_namenode_is_formatted
+    check_cluster_id_mismatch
+
+    # Wait for HDFS to be ready
+    check_hdfs_ready
+
+    log "Creating /videos directory in HDFS..."
+    if ! docker exec -it namenode hdfs dfs -test -d /videos; then
+        docker exec -it namenode hdfs dfs -mkdir -p /videos
+    fi
+
+    log "Creating /videos/checkpoint directory in HDFS..."
+    if ! docker exec -it namenode hdfs dfs -test -d /videos/checkpoint; then
+        docker exec -it namenode hdfs dfs -mkdir -p /videos/checkpoint
+        docker exec -it namenode hdfs dfs -chmod -R 777 /videos/checkpoint
+    fi
+
+    # Upload video files to HDFS if they don't exist
+    upload_videos_to_hdfs
+
+    # Verify the files are in HDFS
+    log "Verifying video files in HDFS..."
+    docker exec -it namenode hdfs dfs -ls /videos
+
+    # Upload the model to HDFS
+    upload_model_to_hdfs "$LOCAL_MODEL_PATH" "$HDFS_MODEL_PATH"
+    if [ $? -ne 0 ]; then
+        log "Error: Failed to upload the model to HDFS."
+        exit 1
+    fi
+}
+
 # Function to start a specific producer
 start_producer() {
     local producer_type=$1
@@ -156,67 +238,6 @@ upload_videos_to_hdfs() {
             log "$video_file already exists in HDFS. Skipping upload."
         fi
     done
-}
-
-# Function to start HDFS services
-start_hdfs_services() {
-    log "Starting HDFS services..."
-    docker compose -f "$DOCKER_COMPOSE_FILE" up -d namenode datanode
-
-    # Check NameNode and cluster ID
-    check_namenode_is_formatted
-    check_cluster_id_mismatch
-
-    # Wait for HDFS to be ready
-    check_hdfs_ready
-
-    log "Creating /videos directory in HDFS..."
-    if ! docker exec -it namenode hdfs dfs -test -d /videos; then
-        docker exec -it namenode hdfs dfs -mkdir -p /videos
-    fi
-
-    log "Creating /videos/checkpoint directory in HDFS..."
-    if ! docker exec -it namenode hdfs dfs -test -d /videos/checkpoint; then
-        docker exec -it namenode hdfs dfs -mkdir -p /videos/checkpoint
-        docker exec -it namenode hdfs dfs -chmod -R 777 /videos/checkpoint
-    fi
-
-    # Upload video files to HDFS if they don't exist
-    upload_videos_to_hdfs
-
-    # Verify the files are in HDFS
-    log "Verifying video files in HDFS..."
-    docker exec -it namenode hdfs dfs -ls /videos
-
-    # Copy the model to HDFS
-    log "Checking if the model is already in HDFS..."
-    if docker exec -it $NAMENODE_CONTAINER hdfs dfs -test -e $HDFS_MODEL_PATH; then
-        log "Model is already in HDFS. Skipping copy."
-    else
-        log "Model not found in HDFS. Copying the model to HDFS..."
-
-        # Copy the model to the namenode container's local filesystem
-        log "Copying the model to the namenode container..."
-        if ! docker cp "$LOCAL_MODEL_PATH" namenode:/tmp/saved_model; then
-            log "Error: Failed to copy the model to the namenode container."
-            exit 1
-        else
-            log "Model copied to the namenode container successfully."
-        fi
-
-        # Upload the model from the namenode container to HDFS
-        log "Uploading the model to HDFS..."
-        if docker exec -it namenode hdfs dfs -put /tmp/saved_model /models/saved_model; then
-            log "Model uploaded to HDFS successfully."
-        else
-            log "Error: Failed to upload the model to HDFS."
-            exit 1
-        fi
-
-        # Clean up the temporary files in the namenode container
-        log "Cleaning up temporary files in the namenode container..."
-        docker exec -it --user root namenode rm -rf /tmp/saved_model
-    fi
 }
 
 # Function to start Kafka brokers
