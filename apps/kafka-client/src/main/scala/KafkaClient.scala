@@ -30,7 +30,7 @@ object KafkaClient {
   // Configuration case classes
   case class HdfsConfig(uri: String, videoPath: String)
   case class KafkaConfig(bootstrapServers: String, topic: String)
-  case class VideoConfig(frameWidth: Int, frameHeight: Int, frameRate: Int)
+  case class VideoConfig(frameWidth: Int, frameHeight: Int, frameRate: Int, format: String)
   case class AppConfig(hdfs: HdfsConfig, kafka: KafkaConfig, video: VideoConfig)
 
   // Prometheus metrics with labels
@@ -85,7 +85,8 @@ object KafkaClient {
       VideoConfig(
         frameWidth = config.getInt("video.frameWidth"),
         frameHeight = config.getInt("video.frameHeight"),
-        frameRate = config.getInt("video.frameRate")
+        frameRate = config.getInt("video.frameRate"),
+        format = config.getString("video.format")
       )
     )
 
@@ -95,6 +96,7 @@ object KafkaClient {
     require(appConfig.video.frameWidth > 0, "Frame width must be positive")
     require(appConfig.video.frameHeight > 0, "Frame height must be positive")
     require(appConfig.video.frameRate > 0, "Frame rate must be positive")
+    require(appConfig.video.format.nonEmpty, "Video format must not be empty")
 
     // HDFS configuration
     val conf = new Configuration()
@@ -137,7 +139,7 @@ object KafkaClient {
     // Process all video files in a loop
     try {
       while (true) { // Loop indefinitely
-        val videoDir = new Path("/videos")
+        val videoDir = new Path(appConfig.hdfs.videoPath)
         val videoFiles = fs.listStatus(videoDir).filter(_.isFile)
         if (videoFiles.isEmpty) {
           logger.warn("No video files found in /videos directory. Waiting for files...")
@@ -175,7 +177,7 @@ object KafkaClient {
     val hdfsInputStream = fs.open(videoPath)
     val grabber = new FFmpegFrameGrabber(hdfsInputStream)
     // Explicit format for HDFS streams
-    grabber.setFormat("mp4")
+    grabber.setFormat(appConfig.video.format)
     grabber.setImageWidth(appConfig.video.frameWidth)
     grabber.setImageHeight(appConfig.video.frameHeight)
     grabber.setFrameRate(appConfig.video.frameRate)
