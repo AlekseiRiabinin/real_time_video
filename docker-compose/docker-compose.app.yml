@@ -246,6 +246,9 @@ services:
 
   # Kafka Client
   kafka-client:
+    build:
+      context: ../kafka-client
+      dockerfile: Dockerfile
     image: alexflames77/kafka_client:latest
     container_name: kafka-client
     labels:
@@ -253,9 +256,9 @@ services:
     ports:
       - "9080:9080"    # Kafka Client communication port
     environment:
+      - JAVA_OPTS=-Xmx6g -Xms3g
       - BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
       - HDFS_URI=hdfs://namenode:8020
-      - JAVA_OPTS=-Xmx2g -Xms1g
     depends_on:
       - namenode
       - kafka-1
@@ -266,6 +269,9 @@ services:
 
   # Akka Client
   akka-client:
+    build:
+      context: ../akka-client
+      dockerfile: Dockerfile
     image: alexflames77/akka_client:latest
     container_name: akka-client
     labels:
@@ -273,7 +279,9 @@ services:
     ports:
       - "9081:9081"    # Akka Client communication port
     environment:
-      - JAVA_OPTS=-Xmx2g -Xms1g
+      - JAVA_OPTS=-Xmx6g -Xms3g
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
+      - HDFS_URI=hdfs://namenode:8020      
     depends_on:
       - namenode
       - kafka-1

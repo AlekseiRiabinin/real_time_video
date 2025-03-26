@@ -8,7 +8,7 @@ import akka.stream.{ActorMaterializer, KillSwitch, KillSwitches, Materializer}
 import com.typesafe.config.ConfigFactory
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.serialization.ByteArraySerializer
-import org.bytedeco.javacv.{FFmpegFrameGrabber, Java2DFrameConverter}
+import org.bytedeco.javacv.{FFmpegFrameGrabber, Java2DFrameConverter, FFmpegLogCallback}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.slf4j.LoggerFactory
@@ -38,7 +38,7 @@ object AkkaClient extends App {
   // Configuration case classes
   case class HdfsConfig(uri: String, videoPath: String)
   case class KafkaConfig(bootstrapServers: String, topic: String)
-  case class VideoConfig(frameWidth: Int, frameHeight: Int, frameRate: Int)
+  case class VideoConfig(frameWidth: Int, frameHeight: Int, frameRate: Int, format: String)
   case class AppConfig(hdfs: HdfsConfig, kafka: KafkaConfig, video: VideoConfig)
 
   // Load configuration from application.conf
@@ -49,13 +49,14 @@ object AkkaClient extends App {
       videoPath = config.getString("hdfs.videoPath")
     ),
     KafkaConfig(
-      bootstrapServers = config.getString("kafka.bootstrapservers"),
+      bootstrapServers = config.getString("kafka.bootstrapServers"),
       topic = config.getString("kafka.topic")
     ),
     VideoConfig(
       frameWidth = config.getInt("video.frameWidth"),
       frameHeight = config.getInt("video.frameHeight"),
-      frameRate = config.getInt("video.frameRate")
+      frameRate = config.getInt("video.frameRate"),
+      format = config.getString("video.format")
     )
   )
 
@@ -65,6 +66,7 @@ object AkkaClient extends App {
   require(appConfig.video.frameWidth > 0, "Frame width must be positive")
   require(appConfig.video.frameHeight > 0, "Frame height must be positive")
   require(appConfig.video.frameRate > 0, "Frame rate must be positive")
+  require(appConfig.video.format.nonEmpty, "Video format must not be empty")
 
   // HDFS configuration
   val conf = new Configuration()
@@ -79,8 +81,8 @@ object AkkaClient extends App {
     case ex: Exception =>
       logger.error(s"Failed to connect to HDFS: ${ex.getMessage}")
       hdfsReadErrors.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).inc()
-      System.exit(1) // Exit the program if HDFS connection fails
-      throw ex // This line is unreachable but required for type safety
+      System.exit(1)
+      throw ex
   }
 
   // Kafka producer settings
@@ -129,34 +131,77 @@ object AkkaClient extends App {
   val prometheusServer = new HTTPServer(9081)
   logger.info("Prometheus HTTP server started on port 9081")
 
-  // Shutdown flag
+  // Shutdown flag and coordinator
   @volatile private var isShuttingDown = false
+  private val shutdownCoordinator = new Object
+  @volatile private var activeStreams = Set.empty[KillSwitch]
 
-  // Shutdown hook
+  // Enhanced shutdown hook
   sys.addShutdownHook {
-    logger.info("Shutdown hook triggered. Setting shutdown flag.")
-    isShuttingDown = true
-    fs.close()
-    system.terminate()
-    prometheusServer.stop()
-    logger.info("AkkaClient stopped")
+    shutdownCoordinator.synchronized {
+      logger.info("Shutdown initiated - setting flag and stopping streams")
+      isShuttingDown = true
+      
+      // Stop all active streams
+      activeStreams.foreach { killSwitch =>
+        try {
+          killSwitch.shutdown()
+        } catch {
+          case ex: Exception =>
+            logger.error("Error stopping stream during shutdown", ex)
+        }
+      }
+      
+      // Give streams a brief moment to complete
+      Thread.sleep(1000)
+    }
+
+    // Force cleanup if needed
+    try {
+      fs.close()
+      Await.result(system.terminate(), 10.seconds)
+      prometheusServer.stop()
+      logger.info("Clean shutdown completed")
+    } catch {
+      case ex: Exception =>
+        logger.error("Forceful shutdown with possible resource leaks", ex)
+    }
   }
+
+  // Initialize FFmpeg logging
+  FFmpegLogCallback.set()
 
   // Process video files in a loop
   while (!isShuttingDown) {
-    val videoDir = new Path(appConfig.hdfs.videoPath)
-    val videoFiles = fs.listStatus(videoDir).filter(_.isFile)
-    if (videoFiles.isEmpty) {
-      logger.warn("No video files found in directory. Waiting for files...")
-      Thread.sleep(5000) // Wait for 5 seconds before checking again
-    } else {
-      videoFiles.sortBy(_.getPath.getName).foreach { fileStatus =>
-        val videoPath = fileStatus.getPath
-        if (videoPath.getName.matches("video_\\d{2}\\.mp4")) {
-          val processingFuture = processVideoFile(fs, videoPath, producerSettings, appConfig)
-          Await.result(processingFuture, Duration.Inf)
+    try {
+      val videoDir = new Path(appConfig.hdfs.videoPath)
+      val videoFiles = fs.listStatus(videoDir).filter { file =>
+        file.isFile && file.getPath.getName.matches("video_\\d{2}\\.mp4")
+      }
+      
+      if (videoFiles.isEmpty) {
+        logger.warn("No valid video files found in /videos directory. Waiting...")
+        Thread.sleep(5000)
+      } else {
+        videoFiles.foreach { fileStatus =>
+          if (!isShuttingDown) {
+            val videoPath = fileStatus.getPath
+            logger.info(s"Starting processing: ${videoPath.getName}")
+            
+            processVideoFile(fs, videoPath, producerSettings, appConfig)
+              .recover { case ex => 
+                logger.error(s"Video processing failed: ${ex.getMessage}")
+                hdfsReadErrors.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).inc()
+              }
+            
+            if (!isShuttingDown) Thread.sleep(1000)
+          }
         }
       }
+    } catch {
+      case ex: Exception if !isShuttingDown =>
+        logger.error(s"Processing loop error: ${ex.getMessage}")
+        Thread.sleep(5000)
     }
   }
 
@@ -170,35 +215,54 @@ object AkkaClient extends App {
     logger.info(s"Processing video file: ${videoPath.getName}")
     val hdfsInputStream = fs.open(videoPath)
     val grabber = new FFmpegFrameGrabber(hdfsInputStream)
+    val converter = new Java2DFrameConverter()
+
     try {
+      // Configure FFmpeg with explicit format first
+      grabber.setFormat(appConfig.video.format)
       grabber.setImageWidth(appConfig.video.frameWidth)
       grabber.setImageHeight(appConfig.video.frameHeight)
       grabber.setFrameRate(appConfig.video.frameRate)
-      grabber.start()
 
-      val converter = new Java2DFrameConverter()
+      // Start grabber with error handling
+      try {
+        grabber.start()
+      } catch {
+        case ex: Exception =>
+          throw new Exception(s"Failed to start FFmpeg grabber: ${ex.getMessage}")
+      }
 
+      var frameCount = 0
       val (killSwitch, streamCompletion) = Source.unfold(()) { _ =>
         if (isShuttingDown) {
-          logger.info("Shutdown flag is set, stopping frame grabber.")
+          logger.info("Shutdown detected - terminating stream early")
           None
         } else {
           try {
             val frame = grabber.grab()
             if (frame != null) {
-              logger.debug(s"Grabbed frame: ${frame.timestamp}")
+              frameCount += 1
+              if (frameCount % 100 == 0) {
+                logger.debug(s"Processed $frameCount frames")
+                System.gc()  // Manual GC to prevent OOM
+              }
+
               val bufferedImage = converter.convert(frame)
               val byteArray = new Array[Byte](bufferedImage.getWidth * bufferedImage.getHeight * 3)
-              val raster = bufferedImage.getRaster
-              raster.getDataElements(0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray)
+              bufferedImage.getRaster.getDataElements(
+                0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray
+              )
+              
+              // Explicitly clean up native resources
+              frame.close()
               Some(((), byteArray))
             } else {
-              logger.info("Reached end of video file.")
+              logger.info(s"Completed ${videoPath.getName} ($frameCount frames)")
               None
             }
           } catch {
             case ex: Exception =>
-              logger.error(s"Error grabbing frame: ${ex.getMessage}")
+              logger.error(s"Frame processing failed: ${ex.getMessage}")
               frameProductionErrors.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).inc()
               None
           }
@@ -221,23 +285,45 @@ object AkkaClient extends App {
       }
       .recover {
         case ex: Exception =>
-          frameProductionErrors.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).inc()
-          logger.error("Error producing frame", ex)
+          kafkaProducerErrors.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).inc()
+          logger.error(s"Kafka production error: ${ex.getMessage}")
           null
       }
       .filter(_ != null)
       .toMat(Producer.plainSink(producerSettings))(Keep.both)
       .run()
 
-      // Ensure the program exits after processing the video file
-      streamCompletion.map { _ =>
-        logger.info(s"Finished processing video file: ${videoPath.getName}")
-      }.recover { case ex =>
-        logger.error(s"Stream failed: ${ex.getMessage}")
+      // Track active stream
+      shutdownCoordinator.synchronized {
+        activeStreams += killSwitch
       }
+
+      // Handle stream completion with proper cleanup
+      streamCompletion.map { _ =>
+        shutdownCoordinator.synchronized {
+          activeStreams -= killSwitch
+        }
+        logger.info(s"Successfully processed: ${videoPath.getName}")
+      }.recover { case ex =>
+        shutdownCoordinator.synchronized {
+          activeStreams -= killSwitch
+        }
+        logger.error(s"Stream processing failed: ${ex.getMessage}")
+      }
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Video processing failed for ${videoPath.getName}: ${ex.getMessage}")
+        Future.failed(ex)
     } finally {
-      grabber.stop()
-      hdfsInputStream.close()
+      // Guaranteed cleanup
+      try {
+        if (grabber != null) grabber.stop()
+        if (converter != null) converter.close()
+        if (hdfsInputStream != null) hdfsInputStream.close()
+      } catch {
+        case ex: Exception =>
+          logger.error(s"Cleanup error for ${videoPath.getName}: ${ex.getMessage}")
+      }
     }
   }
 }

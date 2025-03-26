@@ -4,8 +4,11 @@ FROM eclipse-temurin:21-jdk
 # Set the working directory in the container
 WORKDIR /app
 
-# Install necessary packages (e.g., FFmpeg for video processing)
-RUN apt-get update && apt-get install -y ffmpeg && apt-get clean && rm -rf /var/lib/apt/lists/*
+# Install necessary packages
+RUN apt-get update && \
+    apt-get install -y ffmpeg libopencv-dev && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create Hadoop home directory (optional, if needed)
 RUN mkdir -p /opt/hadoop
@@ -19,8 +22,8 @@ ENV PATH=$PATH:$HADOOP_HOME/bin
 ENV KAFKA_BOOTSTRAP_SERVERS="kafka-1:9092,kafka-2:9095"
 ENV HDFS_URI="hdfs://namenode:8020"
 
-# Copy the pre-built JAR file to the container
-COPY target/scala-3.3.4/AkkaClient-assembly-0.1.0-SNAPSHOT.jar /app/akka-client.jar
+# Copy the pre-built fat JAR file to the container
+COPY target/scala-3.3.4/akka-client-assembly-0.1.0-SNAPSHOT.jar /app/akka-client.jar
 
 # Copy Hadoop configuration files (optional, if needed)
 COPY hadoop-config/core-site.xml /etc/hadoop/core-site.xml
@@ -30,4 +33,4 @@ COPY hadoop-config/hdfs-site.xml /etc/hadoop/hdfs-site.xml
 EXPOSE 9081
 
 # Run the application
-CMD ["java", "-cp", "/app/akka-client.jar:/etc/hadoop/*", "AkkaClient"]
+CMD ["java", "-jar", "/app/akka-client.jar"]

@@ -174,6 +174,8 @@ object KafkaClient {
     logger.info(s"Processing video file: ${videoPath.getName}")
     val hdfsInputStream = fs.open(videoPath)
     val grabber = new FFmpegFrameGrabber(hdfsInputStream)
+    // Explicit format for HDFS streams
+    grabber.setFormat("mp4")
     grabber.setImageWidth(appConfig.video.frameWidth)
     grabber.setImageHeight(appConfig.video.frameHeight)
     grabber.setFrameRate(appConfig.video.frameRate)
