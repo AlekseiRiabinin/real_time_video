@@ -90,37 +90,37 @@ object AkkaClient extends App {
     .withBootstrapServers(appConfig.kafka.bootstrapServers)
 
   // Prometheus metrics with labels
-  val framesProduced: Counter = Counter.build()
+  private val framesProduced: Counter = Counter.build()
     .name("frames_produced_total")
     .help("Total number of frames produced")
     .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
-  val frameProductionTime: Histogram = Histogram.build()
+  private val frameProductionTime: Histogram = Histogram.build()
     .name("frame_production_time_seconds")
     .help("Time taken to produce each frame")
     .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
-  val frameProductionErrors: Counter = Counter.build()
+  private val frameProductionErrors: Counter = Counter.build()
     .name("frame_production_errors_total")
     .help("Total number of frame production errors")
     .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
-  val frameSize: Gauge = Gauge.build()
+  private val frameSize: Gauge = Gauge.build()
     .name("frame_size_bytes")
     .help("Size of each frame in bytes")
     .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
-  val kafkaProducerErrors: Counter = Counter.build()
+  private val kafkaProducerErrors: Counter = Counter.build()
     .name("kafka_producer_errors_total")
     .help("Total number of Kafka producer errors")
     .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
-  val hdfsReadErrors: Counter = Counter.build()
+  private val hdfsReadErrors: Counter = Counter.build()
     .name("hdfs_read_errors_total")
     .help("Total number of HDFS read errors")
     .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)

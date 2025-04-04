@@ -42,7 +42,14 @@ object KafkaClient {
 
   private val frameProductionTime: Histogram = Histogram.build()
     .name("frame_production_time_seconds")
-    .help("Time taken to produce each frame")
+    .buckets(0.01, 0.05, 0.1, 0.5, 1.0)
+    .help("Time taken to produce each frame (histogram)")
+    .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
+    .register()
+
+  private val avgFrameProductionTimeSeconds = Gauge.build()
+    .name("avg_frame_production_time_seconds")
+    .help("Latest frame production time in seconds (simplified for Grafana)")
     .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
@@ -176,7 +183,6 @@ object KafkaClient {
     logger.info(s"Processing video file: ${videoPath.getName}")
     val hdfsInputStream = fs.open(videoPath)
     val grabber = new FFmpegFrameGrabber(hdfsInputStream)
-    // Explicit format for HDFS streams
     grabber.setFormat(appConfig.video.format)
     grabber.setImageWidth(appConfig.video.frameWidth)
     grabber.setImageHeight(appConfig.video.frameHeight)
@@ -189,41 +195,49 @@ object KafkaClient {
       val startTime = System.nanoTime()
       try {
         val bufferedImage = converter.convert(frame)
-        if (bufferedImage == null) {
-          throw new Exception("Failed to convert frame to BufferedImage")
-        }
-        val byteArray = new Array[Byte](bufferedImage.getWidth * bufferedImage.getHeight * 3)
-        val raster = bufferedImage.getRaster
-        raster.getDataElements(0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray)
+        if (bufferedImage == null) throw new Exception("Frame conversion failed")
 
-        // Update Prometheus metrics with application label
+        val byteArray = new Array[Byte](bufferedImage.getWidth * bufferedImage.getHeight * 3)
+        bufferedImage
+          .getRaster
+          .getDataElements(0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray)
+
+        // Calculate elapsed time
+        val elapsedSeconds = (System.nanoTime() - startTime) / 1e9
+        logger.debug(s"Frame processed in ${elapsedSeconds} seconds")
+
+        // Update metrics
         framesProduced.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).inc()
         frameSize.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).set(byteArray.length)
+        
+        // Record to histogram (for percentiles)
         frameProductionTime
           .labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE)
-          .observe((System.nanoTime() - startTime) / 1e9)
+          .observe(elapsedSeconds)
 
-        // Send the frame to Kafka
+        // Update simplified gauge (for direct Grafana queries)
+        avgFrameProductionTimeSeconds
+          .labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE)
+          .set(elapsedSeconds)
+
+        // Send to Kafka
         val record = new ProducerRecord[Array[Byte], Array[Byte]](appConfig.kafka.topic, byteArray)
         kafkaProducer.send(record, new Callback {
           override def onCompletion(metadata: RecordMetadata, exception: Exception): Unit = {
             if (exception != null) {
               kafkaProducerErrors.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).inc()
-              logger.error(s"Failed to send frame to Kafka: ${exception.getMessage}")
-            } else {
-              logger.debug("Frame sent to Kafka")
+              logger.error(s"Kafka send failed: ${exception.getMessage}")
             }
           }
         })
       } catch {
         case ex: Exception =>
           frameProductionErrors.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).inc()
-          logger.error(s"Error processing frame: ${ex.getMessage}")
+          logger.error(s"Frame processing error: ${ex.getMessage}")
       }
       frame = grabber.grab()
     }
     grabber.stop()
     hdfsInputStream.close()
-    logger.info(s"Finished processing video file: ${videoPath.getName}")
   }
 }

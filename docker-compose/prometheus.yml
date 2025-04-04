@@ -4,26 +4,31 @@ global:
   scrape_timeout: 1s
 
 scrape_configs:
-  - job_name: 'kafka-client'
+  - job_name: 'kafka-clients'
+    metrics_path: '/metrics'
     static_configs:
-      - targets: ['kafka-client:9080']
-
-  - job_name: 'akka-client'
-    static_configs:
-      - targets: ['akka-client:9081']
-
-  - job_name: 'cats-client'
-    static_configs:
-      - targets: ['cats-client:9082']
-
-  - job_name: 'fs2-client'
-    static_configs:
-      - targets: ['fs2-client:9083']
-
-  - job_name: 'zio-client'
-    static_configs:
-      - targets: ['zio-client:9084']
+      - targets:
+          - 'kafka-client:9080'
+          - 'akka-client:9081'
+          - 'cats-client:9082'
+          - 'fs2-client:9083'
+          - 'zio-client:9084'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - source_labels: [__address__]
+        target_label: application
+        regex: '([^:]+):\d+'
+        replacement: '$1'
+      - source_labels: [__address__]
+        target_label: job
+        regex: '([^:]+):\d+'
+        replacement: '$1'
 
   - job_name: 'kafka-service'
     static_configs:
       - targets: ['kafka-service:9091']
+        labels:
+          application: 'kafka-service'
+          instance: 'kafka-service:9091'
+          job: 'kafka-service'
