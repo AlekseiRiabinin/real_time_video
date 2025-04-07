@@ -1,0 +1,43 @@
+<configuration>
+    <!-- Default file system -->
+    <property>
+        <name>fs.defaultFS</name>
+        <value>hdfs://namenode:8020</value>
+    </property>
+
+    <!-- Temporary directory -->
+    <property>
+        <name>hadoop.tmp.dir</name>
+        <value>/tmp/hadoop</value>
+    </property>
+
+    <!-- Authentication -->
+    <property>
+        <name>hadoop.security.authentication</name>
+        <value>simple</value>
+    </property>
+
+    <!-- Authorization -->
+    <property>
+        <name>hadoop.security.authorization</name>
+        <value>false</value>
+    </property>
+
+    <!-- Group mapping -->
+    <property>
+        <name>hadoop.security.group.mapping</name>
+        <value>org.apache.hadoop.security.JniBasedUnixGroupsMappingWithFallback</value>
+    </property>
+
+    <!-- Group cache duration -->
+    <property>
+        <name>hadoop.security.groups.cache.secs</name>
+        <value>300</value> <!-- Set to a positive value -->
+    </property>
+
+    <!-- Background reload for group cache -->
+    <property>
+        <name>hadoop.security.groups.cache.background.reload.secs</name>
+        <value>300</value> <!-- Set to a positive value -->
+    </property>
+</configuration>

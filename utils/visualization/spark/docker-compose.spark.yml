@@ -1,0 +1,155 @@
+services:
+  # HDFS Namenode
+  namenode:
+    image: alexflames77/custom-hadoop-namenode:3.3.6-java17
+    container_name: namenode
+    hostname: namenode
+    ports:
+      - "9870:9870"    # NameNode web UI
+      - "8020:8020"    # HDFS port
+    environment:
+      - CLUSTER_NAME=hadoopvideo
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - CORE_CONF_hadoop_http_staticuser_user=root
+      - CORE_CONF_hadoop_proxyuser_hue_hosts=*
+      - CORE_CONF_hadoop_proxyuser_hue_groups=*
+      - HDFS_CONF_dfs_replication=1
+      - HDFS_CONF_dfs_webhdfs_enabled=false
+      - HDFS_CONF_dfs_permissions_enabled=false
+    command: ["hdfs", "namenode"]
+    user: "hadoop"
+    volumes:
+      - ./hadoop-conf:/usr/local/hadoop/etc/hadoop
+      - namenode-data:/hadoop/dfs/name
+      - namenode-logs:/usr/local/hadoop/logs
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1GiB
+        reservations:
+          cpus: '0.25'
+          memory: 512MiB
+
+  # HDFS Datanode
+  datanode:
+    image: alexflames77/custom-hadoop-datanode:3.3.6-java17
+    container_name: datanode
+    hostname: datanode
+    ports:
+      - "9864:9864"    # DataNode web UI
+      - "1004:1004"    # DataNode auxiliary port
+      - "1006:1006"    # DataNode auxiliary port
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - HDFS_CONF_dfs_datanode_data_dir=/hadoop/dfs/data
+      - HDFS_CONF_dfs_permissions_enabled=false
+    command: ["hdfs", "datanode"]
+    user: "hadoop"
+    depends_on:
+      - namenode
+    volumes:
+      - ./hadoop-conf:/usr/local/hadoop/etc/hadoop
+      - datanode-data:/hadoop/dfs/data
+      - datanode-logs:/usr/local/hadoop/logs
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2GiB
+        reservations:
+          cpus: '0.5'
+          memory: 1GiB
+
+  # Spark Master
+  spark-master:
+    image: bitnami/spark:3.5.4
+    container_name: spark-master
+    hostname: spark-master
+    ports:
+      - "7077:7077"    # Spark communication port
+      - "8080:8080"    # Spark Master Web UI
+    environment:
+      - SPARK_MODE=master
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    networks:
+      - kafka-net
+    restart: always
+
+  # Spark Worker
+  spark-worker:
+    image: bitnami/spark:3.5.4
+    container_name: spark-worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=1
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    depends_on:
+      - spark-master
+    networks:
+      - kafka-net
+    restart: always
+
+  # Spark Job
+  spark-job:
+    image: alexflames77/spark_job:latest
+    container_name: spark-job
+    environment:
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_HADOOP_FS_DEFAULTFS=hdfs://namenode:8020
+      - MODEL_PATH=/opt/spark-apps/models/saved_model
+      - HADOOP_USER_NAME=hadoop
+      - HADOOP_SECURITY_AUTHENTICATION=simple
+      - HADOOP_SECURITY_AUTHORIZATION=false
+    command: >
+      /opt/bitnami/spark/bin/spark-submit
+      --master ${SPARK_MASTER_URL}
+      --conf spark.hadoop.fs.defaultFS=${SPARK_HADOOP_FS_DEFAULTFS}
+      --conf spark.hadoop.hadoop.security.authentication=simple
+      --conf spark.hadoop.hadoop.security.authorization=false
+      --conf spark.hadoop.dfs.client.use.datanode.hostname=true
+      --conf spark.hadoop.dfs.namenode.rpc-address=namenode:8020
+      --conf spark.hadoop.dfs.namenode.http-address=namenode:9870
+      --conf spark.hadoop.dfs.permissions.enabled=false
+      --conf spark.hadoop.dfs.namenode.datanode.registration.ip-hostname-check=false
+      --conf spark.hadoop.dfs.webhdfs.enabled=false
+      --conf spark.hadoop.dfs.client.read.shortcircuit=false
+      --class com.sparkml.SparkMLJob
+      /opt/spark-app/spark-job-fat.jar
+    depends_on:
+      - spark-master
+      - namenode
+      - datanode
+    volumes:
+      - ./ivy2:/opt/bitnami/spark/.ivy2
+      - ./hadoop-conf:/opt/bitnami/spark/conf
+    networks:
+      - kafka-net
+    restart: on-failure
+
+networks:
+  kafka-net:
+    driver: bridge
+
+volumes:
+  namenode-data:
+    name: namenode-data
+  datanode-data:
+    name: datanode-data
+  namenode-logs:
+    name: namenode-logs
+  datanode-logs:
+    name: datanode-logs

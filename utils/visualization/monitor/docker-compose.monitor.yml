@@ -1,0 +1,54 @@
+services:
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"    # Prometheus web UI and API
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      -  prometheus-data:/prometheus
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 2GiB 
+        reservations:
+          cpus: '0.25'
+          memory: 1GiB
+
+  # Grafana
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"    # Grafana web UI
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1GiB
+        reservations:
+          cpus: '0.25'
+          memory: 512MiB
+
+networks:
+  kafka-net:
+    driver: bridge
+
+volumes:
+  grafana-storage:
+    name: grafana-storage
+  prometheus-data:
+    name: prometheus-data

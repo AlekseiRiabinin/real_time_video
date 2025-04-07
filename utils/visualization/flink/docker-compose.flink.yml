@@ -1,0 +1,203 @@
+services:
+  # HDFS Namenode
+  namenode:
+    image: alexflames77/custom-hadoop-namenode:3.3.6-java17
+    container_name: namenode
+    hostname: namenode
+    ports:
+      - "9870:9870"    # NameNode web UI
+      - "8020:8020"    # HDFS port
+    environment:
+      - CLUSTER_NAME=hadoopvideo
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - CORE_CONF_hadoop_http_staticuser_user=root
+      - CORE_CONF_hadoop_proxyuser_hue_hosts=*
+      - CORE_CONF_hadoop_proxyuser_hue_groups=*
+      - HDFS_CONF_dfs_replication=1
+      - HDFS_CONF_dfs_webhdfs_enabled=false
+      - HDFS_CONF_dfs_permissions_enabled=false
+    command: ["hdfs", "namenode"]
+    user: "hadoop"
+    volumes:
+      - ./hadoop-conf:/usr/local/hadoop/etc/hadoop
+      - namenode-data:/hadoop/dfs/name
+      - namenode-logs:/usr/local/hadoop/logs
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1GiB
+        reservations:
+          cpus: '0.25'
+          memory: 512MiB
+
+  # HDFS Datanode
+  datanode:
+    image: alexflames77/custom-hadoop-datanode:3.3.6-java17
+    container_name: datanode
+    hostname: datanode
+    ports:
+      - "9864:9864"    # DataNode web UI
+      - "1004:1004"    # DataNode auxiliary port
+      - "1006:1006"    # DataNode auxiliary port
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - HDFS_CONF_dfs_datanode_data_dir=/hadoop/dfs/data
+      - HDFS_CONF_dfs_permissions_enabled=false
+    command: ["hdfs", "datanode"]
+    user: "hadoop"
+    depends_on:
+      - namenode
+    volumes:
+      - ./hadoop-conf:/usr/local/hadoop/etc/hadoop
+      - datanode-data:/hadoop/dfs/data
+      - datanode-logs:/usr/local/hadoop/logs
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2GiB
+        reservations:
+          cpus: '0.5'
+          memory: 1GiB
+
+  # Kafka Brokers
+  kafka-1:
+    image: bitnami/kafka:3.8.0
+    container_name: kafka-1
+    ports:
+      - "9092:9092"    # Kafka-1 communication port
+    environment:
+      - KAFKA_ENABLE_KRAFT=yes
+      - KAFKA_KRAFT_CLUSTER_ID=d8ce1515-401e-44d4-a444-1b6dba479047
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_HEAP_OPTS=-Xmx2G -Xms2G
+    volumes:
+      - ./server-1.properties:/opt/bitnami/kafka/config/server.properties:ro
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 2GiB
+        reservations:
+          cpus: '0.25'
+          memory: 1GiB
+
+  kafka-2:
+    image: bitnami/kafka:3.8.0
+    container_name: kafka-2
+    ports:
+      - "9095:9095"    # Kafka-2 communication port
+    environment:
+      - KAFKA_ENABLE_KRAFT=yes
+      - KAFKA_KRAFT_CLUSTER_ID=d8ce1515-401e-44d4-a444-1b6dba479047
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_HEAP_OPTS=-Xmx2G -Xms2G
+    volumes:
+      - ./server-2.properties:/opt/bitnami/kafka/config/server.properties:ro
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 2GiB
+        reservations:
+          cpus: '0.25'
+          memory: 1GiB
+
+  # Flink JobManager
+  jobmanager:
+    image: flink:1.17.1
+    container_name: jobmanager
+    hostname: jobmanager
+    ports:
+      - "8081:8081"    # Web UI 
+      - "6123:6123"    # RPC (Remote Procedure Call)
+      - "6124:6124"    # Blob Server port
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 2
+        taskmanager.registration.timeout: 5 min
+    command: jobmanager
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2g
+
+  # Flink TaskManager
+  taskmanager:
+    image: flink:1.17.1
+    container_name: taskmanager
+    hostname: taskmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 2
+    command: taskmanager
+    depends_on:
+      - jobmanager
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4g
+
+  # Flink Job
+  flink-job:
+    image: alexflames77/flink_job:latest
+    container_name: flink-job
+    environment:
+      - FLINK_JOBMANAGER_HOST=jobmanager
+      - FLINK_JOBMANAGER_PORT=8081
+    command: >
+      /bin/bash -c "
+      java 
+      --add-opens=java.base/java.util=ALL-UNNAMED 
+      --add-opens=java.base/java.lang=ALL-UNNAMED 
+      --add-opens=java.base/java.lang.invoke=ALL-UNNAMED 
+      --add-opens=java.base/java.nio=ALL-UNNAMED 
+      --add-opens=java.base/sun.nio.ch=ALL-UNNAMED 
+      "
+    depends_on:
+      - jobmanager
+      - taskmanager
+      - kafka-1
+      - kafka-2
+    networks:
+      - kafka-net
+    restart: on-failure
+
+networks:
+  kafka-net:
+    driver: bridge
+
+volumes:
+  namenode-data:
+    name: namenode-data
+  datanode-data:
+    name: datanode-data
+  namenode-logs:
+    name: namenode-logs
+  datanode-logs:
+    name: datanode-logs

@@ -1,0 +1,82 @@
+services:
+  # HDFS Namenode
+  namenode:
+    image: alexflames77/custom-hadoop-namenode:3.3.6-java17
+    container_name: namenode
+    hostname: namenode
+    ports:
+      - "9870:9870"    # NameNode web UI
+      - "8020:8020"    # HDFS port
+    environment:
+      - CLUSTER_NAME=hadoopvideo
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - CORE_CONF_hadoop_http_staticuser_user=root
+      - CORE_CONF_hadoop_proxyuser_hue_hosts=*
+      - CORE_CONF_hadoop_proxyuser_hue_groups=*
+      - HDFS_CONF_dfs_replication=1
+      - HDFS_CONF_dfs_webhdfs_enabled=false
+      - HDFS_CONF_dfs_permissions_enabled=false
+    command: ["hdfs", "namenode"]
+    user: "hadoop"
+    volumes:
+      - ./hadoop-conf:/usr/local/hadoop/etc/hadoop
+      - namenode-data:/hadoop/dfs/name
+      - namenode-logs:/usr/local/hadoop/logs
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1GiB
+        reservations:
+          cpus: '0.25'
+          memory: 512MiB
+
+  # HDFS Datanode
+  datanode:
+    image: alexflames77/custom-hadoop-datanode:3.3.6-java17
+    container_name: datanode
+    hostname: datanode
+    ports:
+      - "9864:9864"    # DataNode web UI
+      - "1004:1004"    # DataNode auxiliary port
+      - "1006:1006"    # DataNode auxiliary port
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - HDFS_CONF_dfs_datanode_data_dir=/hadoop/dfs/data
+      - HDFS_CONF_dfs_permissions_enabled=false
+    command: ["hdfs", "datanode"]
+    user: "hadoop"
+    depends_on:
+      - namenode
+    volumes:
+      - ./hadoop-conf:/usr/local/hadoop/etc/hadoop
+      - datanode-data:/hadoop/dfs/data
+      - datanode-logs:/usr/local/hadoop/logs
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2GiB
+        reservations:
+          cpus: '0.5'
+          memory: 1GiB
+
+networks:
+  kafka-net:
+    driver: bridge
+
+volumes:
+  namenode-data:
+    name: namenode-data
+  datanode-data:
+    name: datanode-data
+  namenode-logs:
+    name: namenode-logs
+  datanode-logs:
+    name: datanode-logs

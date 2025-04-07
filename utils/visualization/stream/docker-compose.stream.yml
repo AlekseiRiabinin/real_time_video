@@ -1,0 +1,356 @@
+services:
+  # HDFS Namenode
+  namenode:
+    image: alexflames77/custom-hadoop-namenode:3.3.6-java17
+    container_name: namenode
+    hostname: namenode
+    ports:
+      - "9870:9870"    # NameNode web UI
+      - "8020:8020"    # HDFS port
+    environment:
+      - CLUSTER_NAME=hadoopvideo
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - CORE_CONF_hadoop_http_staticuser_user=root
+      - CORE_CONF_hadoop_proxyuser_hue_hosts=*
+      - CORE_CONF_hadoop_proxyuser_hue_groups=*
+      - HDFS_CONF_dfs_replication=1
+      - HDFS_CONF_dfs_webhdfs_enabled=false
+      - HDFS_CONF_dfs_permissions_enabled=false
+    command: ["hdfs", "namenode"]
+    user: "hadoop"
+    volumes:
+      - ./hadoop-conf:/usr/local/hadoop/etc/hadoop
+      - namenode-data:/hadoop/dfs/name
+      - namenode-logs:/usr/local/hadoop/logs
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1GiB
+        reservations:
+          cpus: '0.25'
+          memory: 512MiB
+
+  # HDFS Datanode
+  datanode:
+    image: alexflames77/custom-hadoop-datanode:3.3.6-java17
+    container_name: datanode
+    hostname: datanode
+    ports:
+      - "9864:9864"    # DataNode web UI
+      - "1004:1004"    # DataNode auxiliary port
+      - "1006:1006"    # DataNode auxiliary port
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - HDFS_CONF_dfs_datanode_data_dir=/hadoop/dfs/data
+      - HDFS_CONF_dfs_permissions_enabled=false
+    command: ["hdfs", "datanode"]
+    user: "hadoop"
+    depends_on:
+      - namenode
+    volumes:
+      - ./hadoop-conf:/usr/local/hadoop/etc/hadoop
+      - datanode-data:/hadoop/dfs/data
+      - datanode-logs:/usr/local/hadoop/logs
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2GiB
+        reservations:
+          cpus: '0.5'
+          memory: 1GiB
+
+  # Kafka Brokers
+  kafka-1:
+    image: bitnami/kafka:3.8.0
+    container_name: kafka-1
+    ports:
+      - "9092:9092"    # Kafka-1 communication port
+    environment:
+      - KAFKA_ENABLE_KRAFT=yes
+      - KAFKA_KRAFT_CLUSTER_ID=d8ce1515-401e-44d4-a444-1b6dba479047
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_HEAP_OPTS=-Xmx2G -Xms2G
+    volumes:
+      - ./server-1.properties:/opt/bitnami/kafka/config/server.properties:ro
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 2GiB
+        reservations:
+          cpus: '0.25'
+          memory: 1GiB
+
+  kafka-2:
+    image: bitnami/kafka:3.8.0
+    container_name: kafka-2
+    ports:
+      - "9095:9095"    # Kafka-2 communication port
+    environment:
+      - KAFKA_ENABLE_KRAFT=yes
+      - KAFKA_KRAFT_CLUSTER_ID=d8ce1515-401e-44d4-a444-1b6dba479047
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_HEAP_OPTS=-Xmx2G -Xms2G
+    volumes:
+      - ./server-2.properties:/opt/bitnami/kafka/config/server.properties:ro
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 2GiB
+        reservations:
+          cpus: '0.25'
+          memory: 1GiB
+
+  # Kafka Service
+  kafka-service:
+    image: alexflames77/kafka_service:latest
+    container_name: kafka-service
+    ports:
+      - "9091:9091"    # Kafka Service communication port
+    environment:
+      - BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
+    depends_on:
+      - kafka-1
+      - kafka-2
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1GiB
+        reservations:
+          cpus: '0.25'
+          memory: 512MiB
+
+  # Kafka Client
+  kafka-client:
+    build:
+      context: ../kafka-client
+      dockerfile: Dockerfile
+    image: alexflames77/kafka_client:latest
+    container_name: kafka-client
+    labels:
+      - "producer.type=kafka"
+    ports:
+      - "9080:9080"    # Kafka Client communication port
+    environment:
+      - JAVA_OPTS=-Xmx3g -Xms1g
+      - BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
+      - HDFS_URI=hdfs://namenode:8020
+    depends_on:
+      - namenode
+      - kafka-1
+      - kafka-2
+    networks:
+      - kafka-net
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2GiB
+        reservations:
+          cpus: '0.5'
+          memory: 1GiB
+
+  # Akka Client
+  akka-client:
+    build:
+      context: ../akka-client
+      dockerfile: Dockerfile
+    image: alexflames77/akka_client:latest
+    container_name: akka-client
+    labels:
+      - "producer.type=akka"
+    ports:
+      - "9081:9081"    # Akka Client communication port
+    environment:
+      - JAVA_OPTS=-Xmx3g -Xms1g
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
+      - HDFS_URI=hdfs://namenode:8020
+    depends_on:
+      - namenode
+      - kafka-1
+      - kafka-2
+    networks:
+      - kafka-net
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2GiB
+        reservations:
+          cpus: '0.5'
+          memory: 1GiB
+
+  # Cats Client
+  cats-client:
+    build:
+      context: ../cats-client
+      dockerfile: Dockerfile
+    image: alexflames77/cats_client:latest
+    container_name: cats-client
+    labels:
+      - "producer.type=cats"
+    ports:
+      - "9082:9082"    # Cats Client communication port
+    environment:
+      - JAVA_OPTS=-Xmx3g -Xms1g
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
+      - HDFS_URI=hdfs://namenode:8020
+    depends_on:
+      - namenode
+      - kafka-1
+      - kafka-2
+    networks:
+      - kafka-net
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2GiB
+        reservations:
+          cpus: '0.5'
+          memory: 1GiB
+
+  # FS2 Client
+  fs2-client:
+    build:
+      context: ../fs2-client
+      dockerfile: Dockerfile
+    image: alexflames77/fs2_client:latest
+    container_name: fs2-client
+    labels:
+      - "producer.type=fs2"
+    ports:
+      - "9083:9083"    # FS2 Client communication port
+    environment:
+      - JAVA_OPTS=-Xmx3g -Xms1g
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
+      - HDFS_URI=hdfs://namenode:8020
+    depends_on:
+      - namenode
+      - kafka-1
+      - kafka-2
+    networks:
+      - kafka-net
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2GiB
+        reservations:
+          cpus: '0.5'
+          memory: 1GiB
+
+  # ZIO Client
+  zio-client:
+    build:
+      context: ../zio-client
+      dockerfile: Dockerfile
+    image: alexflames77/zio_client:latest
+    container_name: zio-client
+    labels:
+      - "producer.type=zio"
+    ports:
+      - "9084:9084"    # ZIO Client communication port
+    environment:
+      - JAVA_OPTS=-Xmx3g -Xms1g
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
+      - HDFS_URI=hdfs://namenode:8020
+    depends_on:
+      - namenode
+      - kafka-1
+      - kafka-2
+    networks:
+      - kafka-net
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2GiB
+        reservations:
+          cpus: '0.5'
+          memory: 1GiB
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"    # Prometheus web UI and API
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      -  prometheus-data:/prometheus
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 2GiB 
+        reservations:
+          cpus: '0.25'
+          memory: 1GiB
+
+  # Grafana
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"    # Grafana web UI
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1GiB
+        reservations:
+          cpus: '0.25'
+          memory: 512MiB
+
+networks:
+  kafka-net:
+    driver: bridge
+
+volumes:
+  namenode-data:
+    name: namenode-data
+  datanode-data:
+    name: datanode-data
+  namenode-logs:
+    name: namenode-logs
+  datanode-logs:
+    name: datanode-logs
+  grafana-storage:
+    name: grafana-storage
+  prometheus-data:
+    name: prometheus-data
