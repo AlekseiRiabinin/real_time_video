@@ -328,7 +328,7 @@ services:
       - "9081:9081"    # Akka Client communication port
     environment:
       - JAVA_OPTS=-Xmx3g -Xms1g
-      - KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
+      - BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
       - HDFS_URI=hdfs://namenode:8020
     depends_on:
       - namenode
