@@ -218,10 +218,11 @@ services:
     hostname: spark-master
     ports:
       - "7077:7077"    # Spark communication port
-      - "8080:8080"    # Spark Master Web UI
+      - "8090:8080"    # Spark Master Web UI (container 8080 → host 8090)
     environment:
       - SPARK_MODE=master
       - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_MASTER_WEBUI_PORT=8080
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
       - SPARK_RPC_ENCRYPTION_ENABLED=no
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
@@ -239,6 +240,7 @@ services:
       - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_WORKER_MEMORY=1G
       - SPARK_WORKER_CORES=1
+      - SPARK_WORKER_WEBUI_PORT=8081    # Worker UI port
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
       - SPARK_SSL_ENABLED=no
     depends_on:
@@ -251,6 +253,9 @@ services:
   spark-job:
     image: alexflames77/spark_job:latest
     container_name: spark-job
+    ports:
+      - "4040:4040"    # Application UI
+      - "4041:4041"    # Driver UI
     environment:
       - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_HADOOP_FS_DEFAULTFS=hdfs://namenode:8020
@@ -262,6 +267,9 @@ services:
       /opt/bitnami/spark/bin/spark-submit
       --master ${SPARK_MASTER_URL}
       --conf spark.hadoop.fs.defaultFS=${SPARK_HADOOP_FS_DEFAULTFS}
+      --conf spark.ui.port=4040
+      --conf spark.driver.port=4041
+      --conf spark.blockManager.port=8092
       --conf spark.hadoop.hadoop.security.authentication=simple
       --conf spark.hadoop.hadoop.security.authorization=false
       --conf spark.hadoop.dfs.client.use.datanode.hostname=true
@@ -444,7 +452,7 @@ services:
     image: prom/prometheus
     container_name: prometheus
     ports:
-      - "9090:9090"    # Prometheus web UI and API
+      - "9099:9090"    # Prometheus web UI and API
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       -  prometheus-data:/prometheus

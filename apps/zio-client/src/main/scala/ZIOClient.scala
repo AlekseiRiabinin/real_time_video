@@ -55,6 +55,12 @@ object ZIOClient extends ZIOAppDefault {
     .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
+  val avgFrameProductionTimeSeconds = Gauge.build()
+    .name("avg_frame_production_time_seconds")
+    .help("Latest frame production time in seconds (simplified for Grafana)")
+    .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
+    .register()
+
   val frameProductionErrors: Counter = Counter.build()
     .name("frame_production_errors_total")
     .help("Total number of frame production errors")
@@ -153,12 +159,19 @@ object ZIOClient extends ZIOAppDefault {
                     0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray
                   )
 
+                  val elapsedSeconds = (java.lang.System.nanoTime() - startTime) / 1e9
+
                   // Update metrics
                   framesProduced.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).inc()
                   frameSize.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).set(byteArray.length)
                   frameProductionTime
                     .labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE)
                     .observe((java.lang.System.nanoTime() - startTime) / 1e9)
+
+                  // Set the average time gauge
+                  avgFrameProductionTimeSeconds
+                    .labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE)
+                    .set(elapsedSeconds)
 
                   val newCount = frameCounter.incrementAndGet()
                   if (newCount % 100 == 0) {

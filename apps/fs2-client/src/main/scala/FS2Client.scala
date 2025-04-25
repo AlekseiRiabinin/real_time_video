@@ -98,6 +98,12 @@ object FS2Client extends IOApp.Simple {
     .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
     .register()
 
+  val avgFrameProductionTimeSeconds = Gauge.build()
+    .name("avg_frame_production_time_seconds")
+    .help("Latest frame production time in seconds (simplified for Grafana)")
+    .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
+    .register()
+
   val frameProductionErrors: Counter = Counter.build()
     .name("frame_production_errors_total")
     .help("Total number of frame production errors")
@@ -183,12 +189,19 @@ object FS2Client extends IOApp.Simple {
                     0, 0, bufferedImage.getWidth, bufferedImage.getHeight, byteArray
                   )
 
+                  val elapsedSeconds = (System.nanoTime() - startTime) / 1e9
+                  
                   // Update metrics
                   framesProduced.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).inc()
                   frameSize.labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE).set(byteArray.length)
                   frameProductionTime
                     .labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE)
                     .observe((System.nanoTime() - startTime) / 1e9)
+
+                  // Set the average time gauge
+                  avgFrameProductionTimeSeconds
+                    .labels(APPLICATION_VALUE, INSTANCE_VALUE, JOB_VALUE)
+                    .set(elapsedSeconds)
 
                   // Update frame count and log periodically
                   frameCountRef.modify { count =>
