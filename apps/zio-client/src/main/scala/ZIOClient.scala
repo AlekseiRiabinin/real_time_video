@@ -14,9 +14,13 @@ import org.bytedeco.javacv.{FFmpegFrameGrabber, Java2DFrameConverter, FFmpegLogC
 import io.prometheus.client.exporter.HTTPServer
 import io.prometheus.client.hotspot.DefaultExports
 import io.prometheus.client.{CollectorRegistry, Counter, Gauge, Histogram}
+import io.prometheus.client.exporter.common.TextFormat
 import com.typesafe.config.ConfigFactory
+import com.sun.net.httpserver.{HttpServer, HttpExchange, HttpHandler}
 import org.slf4j.{Logger, LoggerFactory}
 import java.util.concurrent.atomic.AtomicInteger
+import java.io.OutputStream
+import java.net.InetSocketAddress
 
 
 object ZIOClient extends ZIOAppDefault {
@@ -42,48 +46,50 @@ object ZIOClient extends ZIOAppDefault {
       descriptor[AppConfig]
     )
 
+  val customRegistry = new CollectorRegistry()
+
   // Prometheus metrics with labels
-  val framesProduced: Counter = Counter.build()
+  lazy val framesProduced: Counter = Counter.build()
     .name("frames_produced_total")
     .help("Total number of frames produced")
     .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
-    .register()
+    .register(customRegistry)
 
-  val frameProductionTime: Histogram = Histogram.build()
+  lazy val frameProductionTime: Histogram = Histogram.build()
     .name("frame_production_time_seconds")
     .help("Time taken to produce each frame")
     .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
-    .register()
+    .register(customRegistry)
 
-  val avgFrameProductionTimeSeconds = Gauge.build()
+  lazy val avgFrameProductionTimeSeconds = Gauge.build()
     .name("avg_frame_production_time_seconds")
     .help("Latest frame production time in seconds (simplified for Grafana)")
     .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
-    .register()
+    .register(customRegistry)
 
-  val frameProductionErrors: Counter = Counter.build()
+  lazy val frameProductionErrors: Counter = Counter.build()
     .name("frame_production_errors_total")
     .help("Total number of frame production errors")
     .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
-    .register()
+    .register(customRegistry)
 
-  val frameSize: Gauge = Gauge.build()
+  lazy val frameSize: Gauge = Gauge.build()
     .name("frame_size_bytes")
     .help("Size of each frame in bytes")
     .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
-    .register()
+    .register(customRegistry)
 
-  val kafkaProducerErrors: Counter = Counter.build()
+  lazy val kafkaProducerErrors: Counter = Counter.build()
     .name("kafka_producer_errors_total")
     .help("Total number of Kafka producer errors")
     .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
-    .register()
+    .register(customRegistry)
 
-  val hdfsReadErrors: Counter = Counter.build()
+  lazy val hdfsReadErrors: Counter = Counter.build()
     .name("hdfs_read_errors_total")
     .help("Total number of HDFS read errors")
     .labelNames(APPLICATION_LABEL, INSTANCE_LABEL, JOB_LABEL)
-    .register()
+    .register(customRegistry)
 
   // Resource for HDFS FileSystem
   def fileSystem(config: AppConfig): ZIO[Scope, Throwable, FileSystem] =
@@ -260,36 +266,80 @@ object ZIOClient extends ZIOAppDefault {
   override def run: ZIO[ZIOAppArgs with Scope, Any, Any] = {
     val logger = LoggerFactory.getLogger(getClass)
 
-    ZIO.scoped {
-      (ZIO.attempt(FFmpegLogCallback.set()) *>
-        ZIO.attempt(DefaultExports.initialize()) *>
-        ZIO.acquireRelease(
-          ZIO.attempt(new HTTPServer(9084))
-        )(server => ZIO.attempt(server.stop()).orDie)
-    )}.flatMap { _ =>
-      ZIO.scoped {
-        Promise.make[Nothing, Unit].flatMap { shutdownSignal =>
-          ZIO.addFinalizer(
-            ZIO.succeed(logger.info("Shutdown signal received")) *>
-            shutdownSignal.succeed(()).unit
-          ) *>
-          ZIO.serviceWithZIO[AppConfig] { config =>
-            ZIO.scoped {
-              for {
-                fs <- fileSystem(config)
-                producer <- Producer.make(ProducerSettings(List(config.kafka.bootstrapServers)))
-                _ <- processVideoFiles(
-                  producer = producer,
-                  fs = fs,
-                  config = config,
-                  logger = logger,
-                  shutdownSignal = shutdownSignal
-                )
-              } yield ()
-            }.catchAll(e => ZIO.succeed(logger.error(s"Fatal error: ${e.getMessage}")))
-          }
+    // Initialize metrics
+    val metricsInit = ZIO.attempt {
+      DefaultExports.initialize()
+      DefaultExports.register(customRegistry)
+      logger.info("Metrics initialized")
+    }
+
+    metricsInit *> ZIO.scoped {
+      // Start the custom HTTP server
+      val serverResource = ZIO.acquireRelease(
+        ZIO.attempt {
+          val server = HttpServer.create(new InetSocketAddress(9084), 0)
+          server.createContext("/metrics", new HttpHandler {
+            def handle(exchange: HttpExchange): Unit = {
+              val writer = new java.io.StringWriter()
+              try {
+                TextFormat.write004(writer, customRegistry.metricFamilySamples())
+                val response = writer.toString.getBytes("UTF-8")
+                
+                exchange.getResponseHeaders().set("Content-Type", TextFormat.CONTENT_TYPE_004)
+                exchange.sendResponseHeaders(200, response.length)
+                val os = exchange.getResponseBody
+                os.write(response)
+                os.close()
+              } catch {
+                case e: Exception =>
+                  logger.error(s"Metrics endpoint error: ${e.getMessage}")
+                  exchange.sendResponseHeaders(500, 0)
+                  exchange.close()
+              } finally {
+                writer.close()
+              }
+            }
+          })
+          server.setExecutor(null)
+          server.start()
+          logger.info("Started custom metrics server on port 9084")
+          server
         }
-      }.provideSome[Scope](configLayer)
+      )(server => 
+        ZIO.attempt {
+          server.stop(0)
+          logger.info("Stopped metrics server")
+        }.orDie
+      )
+
+      // Original processing logic
+      (ZIO.attempt(FFmpegLogCallback.set()) *>
+        serverResource.flatMap { _ =>
+          ZIO.scoped {
+            Promise.make[Nothing, Unit].flatMap { shutdownSignal =>
+              ZIO.addFinalizer(
+                ZIO.succeed(logger.info("Shutdown signal received")) *>
+                shutdownSignal.succeed(()).unit
+              ) *>
+              ZIO.serviceWithZIO[AppConfig] { config =>
+                ZIO.scoped {
+                  for {
+                    fs <- fileSystem(config)
+                    producer <- Producer.make(ProducerSettings(List(config.kafka.bootstrapServers)))
+                    _ <- processVideoFiles(
+                      producer = producer,
+                      fs = fs,
+                      config = config,
+                      logger = logger,
+                      shutdownSignal = shutdownSignal
+                    )
+                  } yield ()
+                }.catchAll(e => ZIO.succeed(logger.error(s"Fatal error: ${e.getMessage}")))
+              }
+            }
+          }.provideSome[Scope](configLayer)
+        }
+      )
     }
   }
 }
