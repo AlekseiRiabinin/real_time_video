@@ -1,0 +1,34 @@
+Performance Analysis Results - 2025-04-29 15:08:30
+==================================================
+
+Table X - Real-Time Video Processing Metrics by Producer
+Producer        Frame Production Rate (fps) Frames Produced (total) Avg Latency (ms) Consumer Lag (ms) Message Consumpt. Time (ms) Messages Consumed (total)
+fs2             568.29                    11069.51             0.27            0.08            0.16                      11099.20            
+akka            694.98                    12000.00             0.20            2.24            0.53                      12000.00            
+kafka           1629.16                   33137.61             0.25            6.00            0.34                      31745.05            
+zio             1242.54                   20179.10             0.21            2.13            0.22                      17828.42            
+cats            481.95                    8737.40              8.21            0.10            0.15                      8712.95             
+
+Table X - Resource Utilization by Producer
+Producer        CPU Usage (%)   Memory Usage (MB) Disk Read/Write (MB/s) Network I/O (MB/s)
+fs2             86.98           732.76          92.19                674.02         
+akka            35.18           678.65          88.16                839.71         
+kafka           39.03           597.65          59.94                1386.25        
+zio             33.09           638.36          90.31                1399.84        
+cats            51.64           722.48          89.49                629.93         
+
+Table X - Throughput by Producer
+Producer        Avg. Throughput (fps) Peak Throughput (fps) CPU Usage (%)   Memory usage (MB)
+fs2             33.53                48.66                86.98           732.76         
+akka            46.95                141.86               35.18           678.65         
+kafka           96.06                161.03               39.03           597.65         
+zio             72.22                119.83               33.09           638.36         
+cats            28.03                34.03                51.64           722.48         
+
+Table X - Latency by Producer
+Producer        Avg. Latency (ms)    P99 Latency (ms)     CPU Usage (%)   Memory usage (MB)
+fs2             0.27                 0.53                 86.98           732.76         
+akka            0.20                 0.30                 35.18           678.65         
+kafka           0.25                 0.38                 39.03           597.65         
+zio             0.21                 0.37                 33.09           638.36         
+cats            8.21                 32.52                51.64           722.48         
