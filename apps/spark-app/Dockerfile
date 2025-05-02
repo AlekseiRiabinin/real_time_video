@@ -1,5 +1,5 @@
 # Dockerfile
-FROM bitnami/spark:3.5.4
+FROM bitnami/spark:3.5.4-
 
 # Set environment variables
 ENV SPARK_MASTER_URL="spark://spark-master:7077"

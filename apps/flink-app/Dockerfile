@@ -1,5 +1,5 @@
 # Use the official Flink image as the base image
-FROM flink:1.17.1
+FROM flink:1.17.1-
 
 # Set the working directory
 WORKDIR /app
