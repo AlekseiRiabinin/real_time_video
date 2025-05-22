@@ -1,0 +1,642 @@
+services:
+  # HDFS Namenode
+  namenode:
+    image: alexflames77/custom-hadoop-namenode:3.3.6-java17
+    container_name: namenode
+    hostname: namenode
+    ports:
+      - "9870:9870"    # NameNode web UI
+      - "8020:8020"    # HDFS port
+    environment:
+      - CLUSTER_NAME=hadoopvideo
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - CORE_CONF_hadoop_http_staticuser_user=root
+      - CORE_CONF_hadoop_proxyuser_hue_hosts=*
+      - CORE_CONF_hadoop_proxyuser_hue_groups=*
+      - HDFS_CONF_dfs_replication=1
+      - HDFS_CONF_dfs_webhdfs_enabled=true
+      - HDFS_CONF_dfs_permissions_enabled=false
+    command: ["hdfs", "namenode"]
+    user: "hadoop"
+    volumes:
+      - ./hadoop-airflow-conf:/usr/local/hadoop/etc/hadoop
+      - namenode-data:/hadoop/dfs/name
+      - namenode-logs:/usr/local/hadoop/logs
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1GiB
+        reservations:
+          cpus: '0.25'
+          memory: 512MiB
+
+  # HDFS Datanode
+  datanode:
+    image: alexflames77/custom-hadoop-datanode:3.3.6-java17
+    container_name: datanode
+    hostname: datanode
+    ports:
+      - "9864:9864"    # DataNode web UI
+      - "1004:1004"    # DataNode auxiliary port
+      - "1006:1006"    # DataNode auxiliary port
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
+      - HDFS_CONF_dfs_datanode_data_dir=/hadoop/dfs/data
+      - HDFS_CONF_dfs_permissions_enabled=false
+      - HDFS_CONF_dfs_webhdfs_enabled=true
+    command: ["hdfs", "datanode"]
+    user: "hadoop"
+    depends_on:
+      - namenode
+    volumes:
+      - ./hadoop-airflow-conf:/usr/local/hadoop/etc/hadoop
+      - datanode-data:/hadoop/dfs/data
+      - datanode-logs:/usr/local/hadoop/logs
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2GiB
+        reservations:
+          cpus: '0.5'
+          memory: 1GiB
+
+  # Kafka Brokers
+  kafka-1:
+    image: bitnami/kafka:3.8.0
+    container_name: kafka-1
+    ports:
+      - "9092:9092"    # Kafka-1 communication port
+    environment:
+      - KAFKA_ENABLE_KRAFT=yes
+      - KAFKA_KRAFT_CLUSTER_ID=d8ce1515-401e-44d4-a444-1b6dba479047
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_HEAP_OPTS=-Xmx2G -Xms2G
+    volumes:
+      - ./server-1.properties:/opt/bitnami/kafka/config/server.properties:ro
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 2GiB
+        reservations:
+          cpus: '0.25'
+          memory: 1GiB
+
+  kafka-2:
+    image: bitnami/kafka:3.8.0
+    container_name: kafka-2
+    ports:
+      - "9095:9095"    # Kafka-2 communication port
+    environment:
+      - KAFKA_ENABLE_KRAFT=yes
+      - KAFKA_KRAFT_CLUSTER_ID=d8ce1515-401e-44d4-a444-1b6dba479047
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_HEAP_OPTS=-Xmx2G -Xms2G
+    volumes:
+      - ./server-2.properties:/opt/bitnami/kafka/config/server.properties:ro
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 2GiB
+        reservations:
+          cpus: '0.25'
+          memory: 1GiB
+
+  # Kafka Service
+  kafka-service:
+    image: alexflames77/kafka_service:latest
+    container_name: kafka-service
+    ports:
+      - "9091:9091"    # Kafka Service communication port
+    environment:
+      - BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
+    depends_on:
+      - kafka-1
+      - kafka-2
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1GiB
+        reservations:
+          cpus: '0.25'
+          memory: 512MiB
+
+  # Flink JobManager
+  jobmanager:
+    image: flink:1.17.1
+    container_name: jobmanager
+    hostname: jobmanager
+    ports:
+      - "8081:8081"    # Web UI 
+      - "6123:6123"    # RPC (Remote Procedure Call)
+      - "6124:6124"    # Blob Server port
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 2
+        taskmanager.registration.timeout: 5 min
+    command: jobmanager
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2g
+
+  # Flink TaskManager
+  taskmanager:
+    image: flink:1.17.1
+    container_name: taskmanager
+    hostname: taskmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 2
+    command: taskmanager
+    depends_on:
+      - jobmanager
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4g
+
+  # Flink Job
+  flink-job:
+    image: alexflames77/flink_job:latest
+    container_name: flink-job
+    environment:
+      - FLINK_JOBMANAGER_HOST=jobmanager
+      - FLINK_JOBMANAGER_PORT=8081
+    command: >
+      /bin/bash -c "
+      java 
+      --add-opens=java.base/java.util=ALL-UNNAMED 
+      --add-opens=java.base/java.lang=ALL-UNNAMED 
+      --add-opens=java.base/java.lang.invoke=ALL-UNNAMED 
+      --add-opens=java.base/java.nio=ALL-UNNAMED 
+      --add-opens=java.base/sun.nio.ch=ALL-UNNAMED 
+      "
+    depends_on:
+      - jobmanager
+      - taskmanager
+      - kafka-1
+      - kafka-2
+    networks:
+      - kafka-net
+    restart: on-failure
+
+  # Spark Master
+  spark-master:
+    image: bitnami/spark:3.5.4
+    container_name: spark-master
+    hostname: spark-master
+    ports:
+      - "7077:7077"    # Spark communication port
+      - "8090:8080"    # Spark Master Web UI (container 8080 → host 8090)
+    environment:
+      - SPARK_MODE=master
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    networks:
+      - kafka-net
+    restart: always
+
+  # Spark Worker
+  spark-worker:
+    image: bitnami/spark:3.5.4
+    container_name: spark-worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=1
+      - SPARK_WORKER_WEBUI_PORT=8081    # Worker UI port
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    depends_on:
+      - spark-master
+    networks:
+      - kafka-net
+    restart: always
+
+  # Spark Job
+  spark-job:
+    image: alexflames77/spark_job:latest
+    container_name: spark-job
+    ports:
+      - "4040:4040"    # Application UI
+      - "4041:4041"    # Driver UI
+    environment:
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_HADOOP_FS_DEFAULTFS=hdfs://namenode:8020
+      - MODEL_PATH=/opt/spark-apps/models/saved_model
+      - HADOOP_USER_NAME=hadoop
+      - HADOOP_SECURITY_AUTHENTICATION=simple
+      - HADOOP_SECURITY_AUTHORIZATION=false
+    command: >
+      /opt/bitnami/spark/bin/spark-submit
+      --master ${SPARK_MASTER_URL}
+      --conf spark.hadoop.fs.defaultFS=${SPARK_HADOOP_FS_DEFAULTFS}
+      --conf spark.ui.port=4040
+      --conf spark.driver.port=4041
+      --conf spark.blockManager.port=8092
+      --conf spark.hadoop.hadoop.security.authentication=simple
+      --conf spark.hadoop.hadoop.security.authorization=false
+      --conf spark.hadoop.dfs.client.use.datanode.hostname=true
+      --conf spark.hadoop.dfs.namenode.rpc-address=namenode:8020
+      --conf spark.hadoop.dfs.namenode.http-address=namenode:9870
+      --conf spark.hadoop.dfs.permissions.enabled=false
+      --conf spark.hadoop.dfs.namenode.datanode.registration.ip-hostname-check=false
+      --conf spark.hadoop.dfs.webhdfs.enabled=false
+      --conf spark.hadoop.dfs.client.read.shortcircuit=false
+      --class com.sparkml.SparkMLJob
+      /opt/spark-app/spark-job-fat.jar
+    depends_on:
+      - spark-master
+      - namenode
+      - datanode
+    volumes:
+      - ./ivy2:/opt/bitnami/spark/.ivy2
+      - ./hadoop-airflow-conf:/opt/bitnami/spark/conf
+    networks:
+      - kafka-net
+    restart: on-failure
+
+  # Kafka Client
+  kafka-client:
+    build:
+      context: ../kafka-client
+      dockerfile: Dockerfile
+    image: alexflames77/kafka_client:latest
+    container_name: kafka-client
+    labels:
+      - "producer.type=kafka"
+    ports:
+      - "9080:9080"    # Kafka Client communication port
+    environment:
+      - JAVA_OPTS=-Xmx3g -Xms1g
+      - BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
+      - HDFS_URI=hdfs://namenode:8020
+    depends_on:
+      - namenode
+      - kafka-1
+      - kafka-2
+    networks:
+      - kafka-net
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2GiB
+        reservations:
+          cpus: '0.5'
+          memory: 1GiB
+
+  # Akka Client
+  akka-client:
+    build:
+      context: ../akka-client
+      dockerfile: Dockerfile
+    image: alexflames77/akka_client:latest
+    container_name: akka-client
+    labels:
+      - "producer.type=akka"
+    ports:
+      - "9081:9081"    # Akka Client communication port
+    environment:
+      - JAVA_OPTS=-Xmx3g -Xms1g
+      - BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
+      - HDFS_URI=hdfs://namenode:8020
+    depends_on:
+      - namenode
+      - kafka-1
+      - kafka-2
+    networks:
+      - kafka-net
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2GiB
+        reservations:
+          cpus: '0.5'
+          memory: 1GiB
+
+  # Cats Client
+  cats-client:
+    build:
+      context: ../cats-client
+      dockerfile: Dockerfile
+    image: alexflames77/cats_client:latest
+    container_name: cats-client
+    labels:
+      - "producer.type=cats"
+    ports:
+      - "9082:9082"    # Cats Client communication port
+    environment:
+      - JAVA_OPTS=-Xmx3g -Xms1g
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
+      - HDFS_URI=hdfs://namenode:8020
+    depends_on:
+      - namenode
+      - kafka-1
+      - kafka-2
+    networks:
+      - kafka-net
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2GiB
+        reservations:
+          cpus: '0.5'
+          memory: 1GiB
+
+  # FS2 Client
+  fs2-client:
+    build:
+      context: ../fs2-client
+      dockerfile: Dockerfile
+    image: alexflames77/fs2_client:latest
+    container_name: fs2-client
+    labels:
+      - "producer.type=fs2"
+    ports:
+      - "9083:9083"    # FS2 Client communication port
+    environment:
+      - JAVA_OPTS=-Xmx3g -Xms1g
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
+      - HDFS_URI=hdfs://namenode:8020
+    depends_on:
+      - namenode
+      - kafka-1
+      - kafka-2
+    networks:
+      - kafka-net
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2GiB
+        reservations:
+          cpus: '0.5'
+          memory: 1GiB
+
+  # ZIO Client
+  zio-client:
+    build:
+      context: ../zio-client
+      dockerfile: Dockerfile
+    image: alexflames77/zio_client:latest
+    container_name: zio-client
+    labels:
+      - "producer.type=zio"
+    ports:
+      - "9084:9084"    # ZIO Client communication port
+    environment:
+      - JAVA_OPTS=-Xmx3g -Xms1g
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9095
+      - HDFS_URI=hdfs://namenode:8020
+    depends_on:
+      - namenode
+      - kafka-1
+      - kafka-2
+    networks:
+      - kafka-net
+    restart: on-failure
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2GiB
+        reservations:
+          cpus: '0.5'
+          memory: 1GiB
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9099:9090"    # Prometheus web UI and API
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      -  prometheus-data:/prometheus
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 2GiB 
+        reservations:
+          cpus: '0.25'
+          memory: 1GiB
+
+  # Grafana
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"    # Grafana web UI
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    networks:
+      - kafka-net
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1GiB
+        reservations:
+          cpus: '0.25'
+          memory: 512MiB
+
+  etl-db:
+    image: postgres:14
+    container_name: etl-db
+    environment:
+      - POSTGRES_DB=etl
+      - POSTGRES_USER=etluser
+      - POSTGRES_PASSWORD=etlpass
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - kafka-net
+    restart: always
+
+  airflow-db:
+    image: postgres:14
+    container_name: airflow-db
+    environment:
+      - POSTGRES_DB=airflow
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 5s
+      retries: 5
+    volumes:
+      - airflow-db-data:/var/lib/postgresql/data
+    networks:
+      - kafka-net
+    restart: always
+
+  airflow-webserver:
+    build:
+      context: ../apps/airflow-app
+      dockerfile: Dockerfile
+    image: alexflames77/custom-airflow:latest
+    container_name: airflow-webserver
+    command: webserver
+    depends_on:
+      - airflow-db
+      - namenode
+      - etl-db
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+      - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=True
+      - AIRFLOW__CORE__FERNET_KEY=PakKUDc_578hbrABpAhOs0PMn7RnDBfkgRO03e_tugA=
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./hadoop-airflow-conf:/opt/hadoop/etc/hadoop      
+    ports:
+      - "8083:8080"
+    networks:
+      - kafka-net
+    restart: always
+
+  airflow-scheduler:
+    image: alexflames77/custom-airflow:latest
+    container_name: airflow-scheduler
+    command: scheduler
+    depends_on:
+      - airflow-webserver
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+      - AIRFLOW__CORE__FERNET_KEY=PakKUDc_578hbrABpAhOs0PMn7RnDBfkgRO03e_tugA=
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./hadoop-airflow-conf:/opt/hadoop/etc/hadoop
+    networks:
+      - kafka-net
+    restart: always
+
+  airflow-init:
+    image: alexflames77/custom-airflow:latest
+    container_name: airflow-init
+    depends_on:
+      - airflow-db
+    entrypoint: /bin/bash
+    command: -c "airflow db init && airflow users create \
+      --username admin \
+      --firstname Admin \
+      --lastname User \
+      --role Admin \
+      --email admin@example.com \
+      --password admin"
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+
+networks:
+  kafka-net:
+    driver: bridge
+
+volumes:
+  namenode-data:
+    name: namenode-data
+  datanode-data:
+    name: datanode-data
+  namenode-logs:
+    name: namenode-logs
+  datanode-logs:
+    name: datanode-logs
+  grafana-storage:
+    name: grafana-storage
+  prometheus-data:
+    name: prometheus-data
+  pgdata:
+    name: postgres-data
+  airflow-db-data:
+    name: airflow-data
+
+# docker compose -f docker-compose.etl.yml up airflow-init
+
+# Initialize the Airflow DB:
+# docker exec -it airflow-webserver airflow db init
+
+# Create a user:
+# docker exec -it airflow-webserver airflow users create \
+#   --username admin \
+#   --password admin \
+#   --firstname Admin \
+#   --lastname User \
+#   --role Admin \
+#   --email admin@example.com
+
+# In DAG Python code:
+# Use PostgresHook with a new connection ID like etl_postgres
+
+# In Airflow UI:
+# Add a Connection named etl_postgres
+# Connection type: Postgres
+# Host: etl-db
+# Port: 5432
+# User: etluser
+# Password: etlpass
+# Schema: etl (or whatever you named the DB)
