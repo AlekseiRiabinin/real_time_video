@@ -74,3 +74,4 @@ lazy val root = (project in file("."))
       "-Djava.library.path=/usr/local/lib"
     )
   )
+  

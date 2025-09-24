@@ -22,7 +22,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 
 
 object AkkaClient {
-
+  
   // Constants for labels
   private val APPLICATION_LABEL = "application"
   private val INSTANCE_LABEL = "instance"

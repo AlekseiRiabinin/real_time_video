@@ -1,0 +1,23 @@
+{
+  "folders": [
+    { "path": "apps/akka-client" },
+    { "path": "apps/flink-app" },
+    { "path": "apps/fs2-client" },
+    { "path": "apps/hdfs-app" },
+    { "path": "apps/kafka-app" },
+    { "path": "apps/kafka-client" },
+    { "path": "apps/spark-app" },
+    { "path": "apps/spark-ml" },
+    { "path": "apps/zio-client" }
+  ],
+  "settings": {
+    "files.watcherExclude": {
+      "**/target": true
+    },
+    "files.exclude": {
+      "**/.bloop": true,
+      "**/.metals": true,
+      "**/.bsp": true
+    }
+  }
+}
