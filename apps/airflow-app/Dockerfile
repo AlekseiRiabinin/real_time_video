@@ -23,5 +23,7 @@ RUN pip install --no-cache-dir \
     --constraint "${CONSTRAINT_URL}" \
     apache-airflow-providers-postgres \
     apache-airflow-providers-apache-hdfs \
+    apache-airflow-providers-clickhouse \
+    apache-airflow-providers-apache-kafka \
     pyarrow \
     hdfs
