@@ -2,7 +2,7 @@ FROM apache/airflow:2.9.1-python3.10
 
 USER root
 
-# Install OS-level packages for PostgreSQL, HDFS, Kafka, Spark and ClickHouse
+# Install OS-level packages for PostgreSQL, HDFS, Kafka, Spark, ClickHouse and MSSQL
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
@@ -16,6 +16,15 @@ RUN apt-get update && apt-get install -y \
     default-jre-headless \
     openssh-client \
     procps \
+    gnupg2 \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
+# Install Microsoft ODBC Driver 18 for SQL Server
+RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
+ && curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list \
+ && apt-get update \
+ && ACCEPT_EULA=Y apt-get install -y msodbcsql18 \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
@@ -31,6 +40,7 @@ RUN pip install --no-cache-dir \
     apache-airflow-providers-apache-hdfs \
     apache-airflow-providers-apache-kafka \
     apache-airflow-providers-apache-spark \
+    apache-airflow-providers-microsoft-mssql \
     pyarrow
 
 # Install ClickHouse provider
@@ -42,17 +52,23 @@ RUN pip install --no-cache-dir \
     hdfs \
     clickhouse-driver \
     clickhouse-connect \
-    pyspark==3.5.0 \
+    pyspark==3.5.4 \
     pandas \
     numpy \
-    boto3
+    boto3 \
+    pyodbc \
+    pymssql
 
 # Set environment variables for Spark
 ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 ENV SPARK_HOME=/home/airflow/.local/lib/python3.10/site-packages/pyspark
 ENV PATH=$JAVA_HOME/bin:$SPARK_HOME/bin:$PATH
 
-# Create directories for Spark logs and configs (simplified - no chown needed)
+# Set ODBC driver path for MSSQL
+ENV ODBCSYSINI=/etc/
+ENV ODBCINI=/etc/odbc.ini
+
+# Create directories for Spark logs and configs
 USER root
 RUN mkdir -p /opt/spark/logs
 USER airflow
