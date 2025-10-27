@@ -28,6 +28,18 @@ RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
+# Register ODBC driver and create configuration
+RUN echo "[ODBC Driver 18 for SQL Server]" > /etc/odbcinst.ini \
+ && echo "Description=Microsoft ODBC Driver 18 for SQL Server" >> /etc/odbcinst.ini \
+ && echo "Driver=/opt/microsoft/msodbcsql18/lib64/libmsodbcsql-18.so" >> /etc/odbcinst.ini \
+ && echo "UsageCount=1" >> /etc/odbcinst.ini
+
+# Create ODBC.ini file
+RUN echo "[ODBC Driver 18 for SQL Server]" > /etc/odbc.ini \
+ && echo "Description=Microsoft ODBC Driver 18 for SQL Server" >> /etc/odbc.ini \
+ && echo "Driver=/opt/microsoft/msodbcsql18/lib64/libmsodbcsql-18.so" >> /etc/odbc.ini \
+ && echo "UsageCount=1" >> /etc/odbc.ini
+
 USER airflow
 
 ARG AIRFLOW_VERSION=2.9.1
