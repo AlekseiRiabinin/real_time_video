@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
     librdkafka-dev \
     unixodbc-dev \
-    default-jre-headless \
+    default-jdk \
     openssh-client \
     procps \
     gnupg2 \
@@ -72,9 +72,8 @@ RUN pip install --no-cache-dir \
     pymssql
 
 # Set environment variables for Spark
-ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 ENV SPARK_HOME=/home/airflow/.local/lib/python3.10/site-packages/pyspark
-ENV PATH=$JAVA_HOME/bin:$SPARK_HOME/bin:$PATH
+ENV PATH=$SPARK_HOME/bin:$PATH
 
 # Set ODBC driver path for MSSQL
 ENV ODBCSYSINI=/etc/
