@@ -40,6 +40,18 @@ RUN echo "[ODBC Driver 18 for SQL Server]" > /etc/odbc.ini \
  && echo "Driver=/opt/microsoft/msodbcsql18/lib64/libmsodbcsql-18.so" >> /etc/odbc.ini \
  && echo "UsageCount=1" >> /etc/odbc.ini
 
+# Install full Spark distribution
+RUN wget -q https://archive.apache.org/dist/spark/spark-3.5.4/spark-3.5.4-bin-hadoop3.tgz \
+    && tar -xzf spark-3.5.4-bin-hadoop3.tgz -C /opt/ \
+    && mv /opt/spark-3.5.4-bin-hadoop3 /opt/spark \
+    && rm spark-3.5.4-bin-hadoop3.tgz
+
+# Create directories for Spark logs and configs
+RUN mkdir -p /opt/spark/logs /opt/spark/work
+
+# Set permissions - airflow user will be available after we switch
+RUN chmod -R 755 /opt/spark
+
 USER airflow
 
 ARG AIRFLOW_VERSION=2.9.1
@@ -61,25 +73,24 @@ RUN pip install --no-cache-dir \
 
 # Install additional Python packages for data processing
 RUN pip install --no-cache-dir \
-    hdfs \
-    clickhouse-driver \
-    clickhouse-connect \
+    hdfs==2.7.3 \
+    clickhouse-connect==0.7.7 \
+    clickhouse-driver==0.2.6 \
     pyspark==3.5.4 \
-    pandas \
-    numpy \
-    boto3 \
-    pyodbc \
-    pymssql
+    pandas==2.0.3 \
+    numpy==1.24.3 \
+    boto3==1.28.62 \
+    pyodbc==4.0.39 \
+    pymssql==2.2.7 \
+    redis==4.5.5 \
+    celery==5.3.4 \
+    kombu==5.3.4
 
 # Set environment variables for Spark
-ENV SPARK_HOME=/home/airflow/.local/lib/python3.10/site-packages/pyspark
+ENV SPARK_HOME=/opt/spark
 ENV PATH=$SPARK_HOME/bin:$PATH
+ENV PYTHONPATH=$SPARK_HOME/python:$SPARK_HOME/python/lib/py4j-0.10.9.7-src.zip
 
 # Set ODBC driver path for MSSQL
 ENV ODBCSYSINI=/etc/
 ENV ODBCINI=/etc/odbc.ini
-
-# Create directories for Spark logs and configs
-USER root
-RUN mkdir -p /opt/spark/logs
-USER airflow
