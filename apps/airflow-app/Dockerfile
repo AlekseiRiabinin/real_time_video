@@ -17,6 +17,8 @@ RUN apt-get update && apt-get install -y \
     openssh-client \
     procps \
     gnupg2 \
+    unixodbc \
+    unixodbc-dev \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
@@ -84,7 +86,8 @@ RUN pip install --no-cache-dir \
     pymssql==2.2.7 \
     redis==4.5.5 \
     celery==5.3.4 \
-    kombu==5.3.4
+    kombu==5.3.4 \
+    minio==7.1.17
 
 # Set environment variables for Spark
 ENV SPARK_HOME=/opt/spark
