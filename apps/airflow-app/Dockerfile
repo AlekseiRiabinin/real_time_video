@@ -54,6 +54,16 @@ RUN mkdir -p /opt/spark/logs /opt/spark/work
 # Set permissions - airflow user will be available after we switch
 RUN chmod -R 755 /opt/spark
 
+# Install Flink CLI (required for Flink job submission)
+RUN wget -q https://downloads.apache.org/flink/flink-2.3.0/flink-2.3.0-bin-scala_2.12.tgz \
+    && tar -xzf flink-2.3.0-bin-scala_2.12.tgz -C /opt/ \
+    && mv /opt/flink-2.3.0 /opt/flink \
+    && rm flink-2.3.0-bin-scala_2.12.tgz
+
+# Set environment variables for Flink
+ENV FLINK_HOME=/opt/flink
+ENV PATH=$FLINK_HOME/bin:$PATH
+
 USER airflow
 
 ARG AIRFLOW_VERSION=2.9.1
